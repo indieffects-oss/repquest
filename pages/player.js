@@ -1,4 +1,4 @@
-// pages/player.js
+// pages/player.js - v0.41 with daily limit check
 import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/router';
 import { supabase } from '../lib/supabaseClient';
@@ -16,6 +16,7 @@ export default function PlayerDrill({ user, userProfile }) {
   const [completed, setCompleted] = useState(false);
   const [reps, setReps] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [alreadyCompletedToday, setAlreadyCompletedToday] = useState(false);
 
   const countdownInterval = useRef(null);
   const timerInterval = useRef(null);
@@ -59,11 +60,36 @@ export default function PlayerDrill({ user, userProfile }) {
       }
 
       setDrill(data);
+      await checkDailyCompletion(data);
     } catch (err) {
       console.error('Error fetching drill:', err);
       alert('Failed to load drill');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const checkDailyCompletion = async (drillData) => {
+    if (!drillData.daily_limit) {
+      setAlreadyCompletedToday(false);
+      return;
+    }
+
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      const { data, error } = await supabase
+        .from('drill_completions_daily')
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('drill_id', drillData.id)
+        .eq('completed_date', today)
+        .maybeSingle();
+
+      if (error) throw error;
+      setAlreadyCompletedToday(!!data);
+    } catch (err) {
+      console.error('Error checking daily completion:', err);
+      setAlreadyCompletedToday(false);
     }
   };
 
@@ -98,180 +124,134 @@ export default function PlayerDrill({ user, userProfile }) {
           startTimer();
         } else if (drill.type === 'stopwatch') {
           startStopwatch();
-        } else {
-          setRunning(true);
         }
       }
     }, 1000);
   };
 
   const startTimer = () => {
-    const endTime = Date.now() + drill.duration * 1000;
     setTimeLeft(drill.duration);
     setRunning(true);
 
     timerInterval.current = setInterval(() => {
-      const left = Math.max(0, Math.ceil((endTime - Date.now()) / 1000));
-      setTimeLeft(left);
-
-      if (left <= 0) {
-        clearInterval(timerInterval.current);
-        playSound(endBuzzer);
-        setRunning(false);
-        setCompleted(true);
-      }
-    }, 100);
-  };
-
-  const stopDrill = () => {
-    clearInterval(timerInterval.current);
-    playSound(endBuzzer);
-    setRunning(false);
-    setCompleted(true);
+      setTimeLeft((prev) => {
+        if (prev <= 1) {
+          clearInterval(timerInterval.current);
+          setRunning(false);
+          setCompleted(true);
+          playSound(endBuzzer);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
   };
 
   const startStopwatch = () => {
-    const startTime = Date.now();
     setStopwatchTime(0);
     setRunning(true);
 
     stopwatchInterval.current = setInterval(() => {
-      const elapsed = Math.floor((Date.now() - startTime) / 1000);
-      setStopwatchTime(elapsed);
-    }, 100);
+      setStopwatchTime((prev) => prev + 1);
+    }, 1000);
   };
 
   const stopStopwatch = () => {
     clearInterval(stopwatchInterval.current);
-    playSound(endBuzzer);
     setRunning(false);
     setCompleted(true);
+    playSound(endBuzzer);
   };
 
-  const startDrillImmediate = () => {
-    playSound(startBeep);
-    setRunning(true);
+  const resetDrill = () => {
+    clearInterval(countdownInterval.current);
+    clearInterval(timerInterval.current);
+    clearInterval(stopwatchInterval.current);
+    setCountdown(0);
+    setTimeLeft(0);
+    setStopwatchTime(0);
+    setRunning(false);
     setCompleted(false);
+    setReps('');
   };
 
-// UPDATED handleSubmit function for pages/player.js
-// Replace the existing handleSubmit function (around line 157) with this:
-
-const handleSubmit = async () => {
-  const repsCount = parseInt(reps) || 0;
-  
-  if (repsCount < 0) {
-    alert('Reps must be a positive number');
-    return;
-  }
-
-  // Check daily limit BEFORE anything else
-  if (drill.daily_limit) {
-    const today = new Date().toISOString().split('T')[0];
-    const { data: todayCompletion } = await supabase
-      .from('drill_completions_daily')
-      .select('*')
-      .eq('user_id', user.id)
-      .eq('drill_id', drill.id)
-      .eq('completed_date', today)
-      .maybeSingle();
-
-    if (todayCompletion) {
-      alert('⏰ You already completed this drill today! No points awarded. Come back tomorrow!');
-      router.push('/drills');
+  const handleSubmit = async () => {
+    const repsCount = parseInt(reps) || 0;
+    
+    if (repsCount < 0) {
+      alert('Reps must be a positive number');
       return;
     }
-  }
 
-  setSubmitting(true);
+    // Check if already completed today
+    if (alreadyCompletedToday) {
+      alert('⏰ You already completed this drill today! Come back tomorrow!');
+      return;
+    }
 
-  try {
-    const repPoints = repsCount * (drill.points_per_rep || 0);
-    const bonusPoints = drill.points_for_completion || 0;
-    const totalPoints = repPoints + bonusPoints;
+    setSubmitting(true);
 
-    // Insert drill result
-    const { error: resultError } = await supabase
-      .from('drill_results')
-      .insert({
-        user_id: user.id,
-        drill_id: drill.id,
-        drill_name: drill.name,
-        reps: repsCount,
-        points: totalPoints,
-        timestamp: new Date().toISOString()
-      });
+    try {
+      const repPoints = repsCount * (drill.points_per_rep || 0);
+      const bonusPoints = drill.points_for_completion || 0;
+      const totalPoints = repPoints + bonusPoints;
 
-    if (resultError) throw resultError;
-
-    // Record daily completion if daily limit is enabled
-    if (drill.daily_limit) {
-      const today = new Date().toISOString().split('T')[0];
-      await supabase
-        .from('drill_completions_daily')
+      // Insert drill result
+      const { error: resultError } = await supabase
+        .from('drill_results')
         .insert({
           user_id: user.id,
           drill_id: drill.id,
-          team_id: userProfile?.selected_team_id || null,
-          completed_date: today
+          drill_name: drill.name,
+          reps: repsCount,
+          points: totalPoints,
+          timestamp: new Date().toISOString()
         });
+
+      if (resultError) throw resultError;
+
+      // Record daily completion if daily limit is enabled
+      if (drill.daily_limit) {
+        const today = new Date().toISOString().split('T')[0];
+        await supabase
+          .from('drill_completions_daily')
+          .insert({
+            user_id: user.id,
+            drill_id: drill.id,
+            team_id: userProfile?.selected_team_id || null,
+            completed_date: today
+          });
+      }
+
+      // Update user's total points
+      const { error: updateError } = await supabase.rpc('increment_user_points', {
+        user_id: user.id,
+        points_to_add: totalPoints
+      });
+
+      // If RPC doesn't exist, fall back to manual update
+      if (updateError) {
+        const { data: userData } = await supabase
+          .from('users')
+          .select('total_points')
+          .eq('id', user.id)
+          .single();
+
+        await supabase
+          .from('users')
+          .update({ total_points: (userData.total_points || 0) + totalPoints })
+          .eq('id', user.id);
+      }
+
+      alert(`Great job! You earned ${totalPoints} points! 🎉`);
+      router.push('/drills');
+    } catch (err) {
+      console.error('Error submitting result:', err);
+      alert('Failed to save result');
+    } finally {
+      setSubmitting(false);
     }
-
-    // Update user's total points
-    const { error: updateError } = await supabase.rpc('increment_user_points', {
-      user_id: user.id,
-      points_to_add: totalPoints
-    });
-
-    // If RPC doesn't exist, fall back to manual update
-    if (updateError) {
-      const { data: userData } = await supabase
-        .from('users')
-        .select('total_points')
-        .eq('id', user.id)
-        .single();
-
-      await supabase
-        .from('users')
-        .update({ total_points: (userData.total_points || 0) + totalPoints })
-        .eq('id', user.id);
-    }
-
-    alert(`Great job! You earned ${totalPoints} points! 🎉`);
-    router.push('/drills');
-  } catch (err) {
-    console.error('Error submitting result:', err);
-    alert('Failed to save result');
-  } finally {
-    setSubmitting(false);
-  }
-};
-
-
-  if (loading) {
-    return <div className="p-6 text-white">Loading drill...</div>;
-  }
-
-  if (!drill) {
-    return <div className="p-6 text-white">Drill not found</div>;
-  }
-
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-gray-900 flex items-center justify-center p-4">
-      <div className="bg-gray-800 rounded-2xl shadow-2xl p-8 w-full max-w-2xl border border-gray-700">
-        <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-white mb-2">{drill.name}</h1>
-          {drill.description && (
-            <p className="text-gray-400">{drill.description}</p>
-          )}
-        </div>
-
-        {countdown > 0 && (
-          <div className="text-center">
-            <div className="text-9xl font-bold text-blue-400 mb-4">
-              {countdown}
-            </div>
-            <p className="text-gray-400 text-xl">Get ready...</p>
+  };
           </div>
         )}
 
@@ -401,12 +381,18 @@ const handleSubmit = async () => {
                   </div>
                 )}
                 <div className="flex gap-3">
+
+                {alreadyCompletedToday && drill.daily_limit && (
+                  <div className="bg-yellow-900/50 border border-yellow-700 text-yellow-200 px-4 py-3 rounded-lg mb-4 text-center">
+                    ⏰ You've already completed this drill today! Come back tomorrow for more points.
+                  </div>
+                )}
                   <button
                     onClick={handleSubmit}
-                    disabled={!reps || submitting}
+                    disabled={!reps || submitting || alreadyCompletedToday}
                     className="flex-1 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-semibold py-4 rounded-lg text-lg transition"
                   >
-                    {submitting ? 'Submitting...' : 'Submit Result'}
+                    {alreadyCompletedToday ? '✓ Completed Today - Come Back Tomorrow' : submitting ? 'Submitting...' : 'Submit Result'}
                   </button>
                   <button
                     onClick={() => router.push('/drills')}
