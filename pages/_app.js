@@ -15,18 +15,42 @@ function MyApp({ Component, pageProps }) {
   const hasInitialized = useRef(false);
 
   useEffect(() => {
-    // Get initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) {
-        setUser(session.user);
-        fetchUserProfile(session.user.id);
-      } else {
-        setLoading(false);
+    let mounted = true;
+    
+    const initAuth = async () => {
+      try {
+        // Set timeout to prevent infinite loading
+        const timeoutId = setTimeout(() => {
+          if (mounted) {
+            console.log('Auth timeout - completing load');
+            setLoading(false);
+          }
+        }, 3000);
+
+        const { data: { session } } = await supabase.auth.getSession();
+        
+        clearTimeout(timeoutId);
+        
+        if (!mounted) return;
+        
+        if (session?.user) {
+          setUser(session.user);
+          await fetchUserProfile(session.user.id);
+        } else {
+          setLoading(false);
+        }
+      } catch (err) {
+        console.error('Error getting session:', err);
+        if (mounted) setLoading(false);
       }
-    });
+    };
+
+    initAuth();
 
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (!mounted) return;
+      
       console.log('Auth event:', event);
       
       if (event === 'SIGNED_OUT') {
@@ -51,7 +75,10 @@ function MyApp({ Component, pageProps }) {
       }
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
   }, [router]);
 
   const fetchUserProfile = async (userId) => {
@@ -66,16 +93,16 @@ function MyApp({ Component, pageProps }) {
 
       setUserProfile(data);
       
-      // Fetch team colors if user has a role
+      // Fetch team colors in parallel (non-blocking)
       if (data.role === 'coach') {
-        await fetchCoachTeamColors(userId);
+        fetchCoachTeamColors(userId).catch(err => console.log('Team colors fetch failed'));
       } else if (data.role === 'player') {
-        await fetchPlayerTeamColors(userId);
+        fetchPlayerTeamColors(userId).catch(err => console.log('Team colors fetch failed'));
       }
       
       setLoading(false);
 
-      // Redirect after successful profile fetch
+      // Redirect after successful profile fetch (only on login page)
       if (router.pathname === '/') {
         if (!data.display_name) {
           router.push('/profile');
@@ -92,57 +119,45 @@ function MyApp({ Component, pageProps }) {
   };
 
   const fetchCoachTeamColors = async (userId) => {
-    try {
-      // Get coach's first team colors
-      const { data, error } = await supabase
-        .from('teams')
-        .select('primary_color, secondary_color')
-        .eq('coach_id', userId)
-        .limit(1)
-        .single();
+    const { data, error } = await supabase
+      .from('teams')
+      .select('primary_color, secondary_color')
+      .eq('coach_id', userId)
+      .limit(1)
+      .single();
 
-      if (data && !error) {
-        setTeamColors({
-          primary: data.primary_color || '#3B82F6',
-          secondary: data.secondary_color || '#1E40AF'
-        });
-        applyTeamColors(data.primary_color || '#3B82F6', data.secondary_color || '#1E40AF');
-      }
-    } catch (err) {
-      console.log('No team colors found, using defaults');
+    if (data && !error) {
+      setTeamColors({
+        primary: data.primary_color || '#3B82F6',
+        secondary: data.secondary_color || '#1E40AF'
+      });
+      applyTeamColors(data.primary_color || '#3B82F6', data.secondary_color || '#1E40AF');
     }
   };
 
   const fetchPlayerTeamColors = async (userId) => {
-    try {
-      // Get player's team colors
-      const { data, error } = await supabase
-        .from('team_members')
-        .select('teams(primary_color, secondary_color)')
-        .eq('user_id', userId)
-        .limit(1)
-        .single();
+    const { data, error } = await supabase
+      .from('team_members')
+      .select('teams(primary_color, secondary_color)')
+      .eq('user_id', userId)
+      .limit(1)
+      .single();
 
-      if (data?.teams && !error) {
-        setTeamColors({
-          primary: data.teams.primary_color || '#3B82F6',
-          secondary: data.teams.secondary_color || '#1E40AF'
-        });
-        applyTeamColors(data.teams.primary_color || '#3B82F6', data.teams.secondary_color || '#1E40AF');
-      }
-    } catch (err) {
-      console.log('No team colors found, using defaults');
+    if (data?.teams && !error) {
+      setTeamColors({
+        primary: data.teams.primary_color || '#3B82F6',
+        secondary: data.teams.secondary_color || '#1E40AF'
+      });
+      applyTeamColors(data.teams.primary_color || '#3B82F6', data.teams.secondary_color || '#1E40AF');
     }
   };
 
   const applyTeamColors = (primary, secondary) => {
-    // Apply CSS variables to root
     document.documentElement.style.setProperty('--color-primary', primary);
     document.documentElement.style.setProperty('--color-secondary', secondary);
   };
 
   useEffect(() => {
-    // Apply default colors on mount
     applyTeamColors('#3B82F6', '#1E40AF');
   }, []);
 
