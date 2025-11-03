@@ -6,12 +6,14 @@ import { supabase } from '../lib/supabaseClient';
 export default function Profile({ user, userProfile }) {
   const router = useRouter();
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [profile, setProfile] = useState({
     display_name: '',
     jersey_number: '',
     position: '',
-    team_name: ''
+    team_name: '',
+    profile_picture_url: ''
   });
 
   useEffect(() => {
@@ -20,10 +22,102 @@ export default function Profile({ user, userProfile }) {
         display_name: userProfile.display_name || '',
         jersey_number: userProfile.jersey_number || '',
         position: userProfile.position || '',
-        team_name: userProfile.team_name || ''
+        team_name: userProfile.team_name || '',
+        profile_picture_url: userProfile.profile_picture_url || ''
       });
     }
   }, [userProfile]);
+
+  const handleProfilePictureUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate file
+    if (!file.type.startsWith('image/')) {
+      alert('Please upload an image file');
+      return;
+    }
+
+    if (file.size > 2 * 1024 * 1024) {
+      alert('Image must be less than 2MB');
+      return;
+    }
+
+    setUploading(true);
+
+    try {
+      // Create unique filename
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${user.id}-${Date.now()}.${fileExt}`;
+
+      // Delete old picture if exists
+      if (profile.profile_picture_url) {
+        const oldFileName = profile.profile_picture_url.split('/').pop();
+        await supabase.storage
+          .from('profile-pictures')
+          .remove([oldFileName]);
+      }
+
+      // Upload to Supabase Storage
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('profile-pictures')
+        .upload(fileName, file, {
+          cacheControl: '3600',
+          upsert: true
+        });
+
+      if (uploadError) throw uploadError;
+
+      // Get public URL
+      const { data: { publicUrl } } = supabase.storage
+        .from('profile-pictures')
+        .getPublicUrl(fileName);
+
+      // Update user profile
+      const { error: updateError } = await supabase
+        .from('users')
+        .update({ profile_picture_url: publicUrl })
+        .eq('id', user.id);
+
+      if (updateError) throw updateError;
+
+      setProfile({ ...profile, profile_picture_url: publicUrl });
+      alert('Profile picture updated!');
+    } catch (err) {
+      console.error('Error uploading profile picture:', err);
+      alert('Failed to upload picture: ' + err.message);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const removeProfilePicture = async () => {
+    if (!confirm('Remove profile picture?')) return;
+
+    try {
+      // Remove from storage
+      if (profile.profile_picture_url) {
+        const fileName = profile.profile_picture_url.split('/').pop();
+        await supabase.storage
+          .from('profile-pictures')
+          .remove([fileName]);
+      }
+
+      // Update user profile
+      const { error } = await supabase
+        .from('users')
+        .update({ profile_picture_url: null })
+        .eq('id', user.id);
+
+      if (error) throw error;
+
+      setProfile({ ...profile, profile_picture_url: '' });
+      alert('Profile picture removed!');
+    } catch (err) {
+      console.error('Error removing profile picture:', err);
+      alert('Failed to remove picture');
+    }
+  };
 
   const handleSave = async () => {
     if (!profile.display_name.trim()) {
@@ -72,14 +166,58 @@ export default function Profile({ user, userProfile }) {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-gray-900 p-6">
+    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-gray-900 p-4 sm:p-6">
       <div className="max-w-2xl mx-auto">
         <div className="mb-6">
-          <h1 className="text-3xl font-bold text-white mb-2">Profile Settings</h1>
-          <p className="text-gray-400">Update your information</p>
+          <h1 className="text-2xl sm:text-3xl font-bold text-white mb-2">Profile Settings</h1>
+          <p className="text-gray-400 text-sm sm:text-base">Update your information</p>
         </div>
 
         <div className="bg-gray-800 rounded-xl p-6 border border-gray-700">
+          {/* Profile Picture Section */}
+          <div className="mb-6 pb-6 border-b border-gray-700">
+            <h3 className="text-white font-semibold mb-4">Profile Picture</h3>
+            <div className="flex items-center gap-6">
+              {profile.profile_picture_url ? (
+                <div className="relative group">
+                  <img 
+                    src={profile.profile_picture_url}
+                    alt="Profile"
+                    className="w-24 h-24 rounded-full object-cover border-4 border-gray-700"
+                  />
+                  <button
+                    onClick={removeProfilePicture}
+                    className="absolute -top-2 -right-2 bg-red-600 hover:bg-red-700 text-white w-8 h-8 rounded-full text-sm opacity-0 group-hover:opacity-100 transition"
+                  >
+                    ✕
+                  </button>
+                </div>
+              ) : (
+                <div className="w-24 h-24 rounded-full bg-gray-700 border-4 border-gray-600 flex items-center justify-center">
+                  <span className="text-3xl text-gray-500">👤</span>
+                </div>
+              )}
+
+              <div className="flex-1">
+                <label className="cursor-pointer inline-block">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleProfilePictureUpload}
+                    disabled={uploading}
+                    className="hidden"
+                  />
+                  <span className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 text-white px-4 py-2 rounded-lg text-sm font-semibold inline-block transition">
+                    {uploading ? 'Uploading...' : profile.profile_picture_url ? 'Change Picture' : 'Upload Picture'}
+                  </span>
+                </label>
+                <p className="text-gray-400 text-xs mt-2">
+                  JPG, PNG or GIF. Max 2MB.
+                </p>
+              </div>
+            </div>
+          </div>
+
           <div className="space-y-4">
             <div>
               <label className="block text-gray-300 text-sm mb-2">

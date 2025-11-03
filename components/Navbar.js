@@ -42,6 +42,16 @@ export default function Navbar({ user, userProfile }) {
                   Drills
                 </Link>
                 <Link
+                  href="/scores"
+                  className={`px-4 py-2 rounded-lg transition ${
+                    isActive('/scores')
+                      ? 'bg-blue-600 text-white'
+                      : 'text-gray-300 hover:bg-gray-700'
+                  }`}
+                >
+                  Scores
+                </Link>
+                <Link
                   href="/teams"
                   className={`px-4 py-2 rounded-lg transition ${
                     isActive('/teams')
@@ -148,6 +158,17 @@ export default function Navbar({ user, userProfile }) {
                   }`}
                 >
                   Drills
+                </Link>
+                <Link
+                  href="/scores"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className={`block px-4 py-3 rounded-lg transition ${
+                    isActive('/scores')
+                      ? 'bg-blue-600 text-white'
+                      : 'text-gray-300 hover:bg-gray-700'
+                  }`}
+                >
+                  Scores
                 </Link>
                 <Link
                   href="/teams"

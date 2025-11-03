@@ -1,6 +1,6 @@
 // pages/_app.js
 import '../styles/globals.css';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import { supabase } from '../lib/supabaseClient';
@@ -12,40 +12,7 @@ function MyApp({ Component, pageProps }) {
   const [userProfile, setUserProfile] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    // Get initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) {
-        setUser(session.user);
-        fetchUserProfile(session.user.id);
-      } else {
-        setLoading(false);
-      }
-    });
-
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log('Auth event:', event); // Debug log
-      
-      if (session?.user) {
-        setUser(session.user);
-        await fetchUserProfile(session.user.id);
-      } else {
-        setUser(null);
-        setUserProfile(null);
-        setLoading(false);
-        
-        // Redirect to login if trying to access protected pages
-        if (router.pathname !== '/' && router.pathname !== '/about') {
-          router.push('/');
-        }
-      }
-    });
-
-    return () => subscription.unsubscribe();
-  }, [router]);
-
-  const fetchUserProfile = async (userId) => {
+  const fetchUserProfile = useCallback(async (userId) => {
     try {
       const { data, error } = await supabase
         .from('users')
@@ -57,8 +24,8 @@ function MyApp({ Component, pageProps }) {
 
       setUserProfile(data);
 
-      // Redirect based on profile completeness and role
-      if (router.pathname === '/') {
+      // Only redirect on initial load, not on tab switches
+      if (router.pathname === '/' && data) {
         if (!data.display_name) {
           router.push('/profile');
         } else if (data.role === 'coach') {
@@ -72,7 +39,87 @@ function MyApp({ Component, pageProps }) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [router]);
+
+  useEffect(() => {
+    let mounted = true;
+
+    // Get initial session
+    const initAuth = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        
+        if (!mounted) return;
+        
+        if (session?.user) {
+          setUser(session.user);
+          await fetchUserProfile(session.user.id);
+        } else {
+          setLoading(false);
+        }
+      } catch (err) {
+        console.error('Error getting session:', err);
+        if (mounted) setLoading(false);
+      }
+    };
+
+    initAuth();
+
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (!mounted) return;
+      
+      console.log('Auth event:', event);
+      
+      if (event === 'SIGNED_OUT') {
+        setUser(null);
+        setUserProfile(null);
+        if (router.pathname !== '/' && router.pathname !== '/about' && router.pathname !== '/coach-signup') {
+          router.push('/');
+        }
+      } else if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+        if (session?.user) {
+          setUser(session.user);
+          await fetchUserProfile(session.user.id);
+        }
+      } else if (event === 'USER_UPDATED') {
+        if (session?.user) {
+          setUser(session.user);
+        }
+      }
+    });
+
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
+  }, [fetchUserProfile, router]);
+
+  // Handle visibility change - refresh session when tab becomes visible
+  useEffect(() => {
+    const handleVisibilityChange = async () => {
+      if (document.visibilityState === 'visible' && user) {
+        // Refresh the session when user returns to tab
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          if (session?.user && session.user.id === user.id) {
+            // Session is still valid, just refresh the profile data
+            await fetchUserProfile(session.user.id);
+          } else if (!session) {
+            // Session expired
+            setUser(null);
+            setUserProfile(null);
+            router.push('/');
+          }
+        } catch (err) {
+          console.error('Error refreshing session:', err);
+        }
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [user, fetchUserProfile, router]);
 
   if (loading) {
     return (
@@ -82,7 +129,7 @@ function MyApp({ Component, pageProps }) {
     );
   }
 
-  const hideNavbar = router.pathname === '/' || !user;
+  const hideNavbar = router.pathname === '/' || router.pathname === '/coach-signup' || !user;
 
   return (
     <div className="min-h-screen bg-gray-900">

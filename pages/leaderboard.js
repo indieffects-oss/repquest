@@ -15,7 +15,7 @@ export default function Leaderboard({ user, userProfile }) {
     try {
       const { data, error } = await supabase
         .from('users')
-        .select('*')
+        .select('id, display_name, email, jersey_number, position, team_name, total_points, profile_picture_url')
         .not('display_name', 'is', null)
         .order('total_points', { ascending: false });
 
@@ -49,15 +49,15 @@ export default function Leaderboard({ user, userProfile }) {
             </p>
           </div>
         ) : (
-          <div className="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
+          <div className="bg-gray-800 rounded-xl border border-gray-700 overflow-x-auto">
             <table className="w-full">
               <thead className="bg-gray-700">
                 <tr>
-                  <th className="px-6 py-4 text-left text-gray-300 font-semibold">Rank</th>
-                  <th className="px-6 py-4 text-left text-gray-300 font-semibold">Player</th>
-                  <th className="px-6 py-4 text-left text-gray-300 font-semibold">Jersey</th>
-                  <th className="px-6 py-4 text-left text-gray-300 font-semibold">Team</th>
-                  <th className="px-6 py-4 text-right text-gray-300 font-semibold">Points</th>
+                  <th className="px-3 sm:px-6 py-4 text-left text-gray-300 font-semibold text-sm">Rank</th>
+                  <th className="px-3 sm:px-6 py-4 text-left text-gray-300 font-semibold text-sm">Player</th>
+                  <th className="px-3 sm:px-6 py-4 text-left text-gray-300 font-semibold text-sm hidden sm:table-cell">Jersey</th>
+                  <th className="px-3 sm:px-6 py-4 text-left text-gray-300 font-semibold text-sm hidden md:table-cell">Team</th>
+                  <th className="px-3 sm:px-6 py-4 text-right text-gray-300 font-semibold text-sm">Points</th>
                 </tr>
               </thead>
               <tbody>
@@ -72,33 +72,50 @@ export default function Leaderboard({ user, userProfile }) {
                         isCurrentUser ? 'bg-blue-900/30' : index % 2 === 0 ? 'bg-gray-800' : 'bg-gray-750'
                       }`}
                     >
-                      <td className="px-6 py-4">
+                      <td className="px-3 sm:px-6 py-4">
                         <div className="flex items-center gap-2">
-                          {rankEmoji && <span className="text-2xl">{rankEmoji}</span>}
-                          <span className={`font-semibold ${isCurrentUser ? 'text-blue-400' : 'text-white'}`}>
+                          {rankEmoji && <span className="text-xl sm:text-2xl">{rankEmoji}</span>}
+                          <span className={`font-semibold text-sm sm:text-base ${isCurrentUser ? 'text-blue-400' : 'text-white'}`}>
                             #{index + 1}
                           </span>
                         </div>
                       </td>
-                      <td className="px-6 py-4">
-                        <div>
-                          <div className={`font-semibold ${isCurrentUser ? 'text-blue-400' : 'text-white'}`}>
-                            {player.display_name}
-                            {isCurrentUser && <span className="ml-2 text-xs">(You)</span>}
-                          </div>
-                          {player.position && (
-                            <div className="text-gray-400 text-sm">{player.position}</div>
+                      <td className="px-3 sm:px-6 py-4">
+                        <div className="flex items-center gap-3">
+                          {player.profile_picture_url ? (
+                            <img 
+                              src={player.profile_picture_url}
+                              alt={player.display_name}
+                              className="w-10 h-10 rounded-full object-cover border-2 border-gray-600"
+                            />
+                          ) : (
+                            <div className="w-10 h-10 rounded-full bg-gray-700 flex items-center justify-center text-gray-400">
+                              👤
+                            </div>
                           )}
+                          <div>
+                            <div className={`font-semibold text-sm sm:text-base ${isCurrentUser ? 'text-blue-400' : 'text-white'}`}>
+                              {player.display_name}
+                              {isCurrentUser && <span className="ml-2 text-xs">(You)</span>}
+                            </div>
+                            {player.position && (
+                              <div className="text-gray-400 text-xs sm:text-sm">{player.position}</div>
+                            )}
+                            {/* Show jersey on mobile under name */}
+                            <div className="text-gray-400 text-xs sm:hidden mt-1">
+                              #{player.jersey_number || '-'}
+                            </div>
+                          </div>
                         </div>
                       </td>
-                      <td className="px-6 py-4 text-gray-300">
+                      <td className="px-3 sm:px-6 py-4 text-gray-300 hidden sm:table-cell text-sm sm:text-base">
                         {player.jersey_number || '-'}
                       </td>
-                      <td className="px-6 py-4 text-gray-300">
+                      <td className="px-3 sm:px-6 py-4 text-gray-300 hidden md:table-cell text-sm sm:text-base">
                         {player.team_name || '-'}
                       </td>
-                      <td className="px-6 py-4 text-right">
-                        <span className="text-blue-400 font-bold text-lg">
+                      <td className="px-3 sm:px-6 py-4 text-right">
+                        <span className="text-blue-400 font-bold text-base sm:text-lg">
                           {(player.total_points || 0).toLocaleString()}
                         </span>
                       </td>
