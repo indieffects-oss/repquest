@@ -113,10 +113,10 @@ export default function Navbar({ user, userProfile }) {
           <div className="hidden md:flex items-center gap-4">
             <div className="text-right">
               <div className="text-white font-semibold text-sm">
-                {userProfile?.displayName || 'User'}
+                {userProfile?.display_name || 'User'}
               </div>
               <div className="text-blue-400 text-xs font-semibold">
-                {userProfile?.totalPoints || 0} pts
+                {userProfile?.total_points || 0} pts
               </div>
             </div>
             
@@ -235,10 +235,10 @@ export default function Navbar({ user, userProfile }) {
             {/* Mobile User Info */}
             <div className="px-4 py-3 bg-gray-700 rounded-lg">
               <div className="text-white font-semibold">
-                {userProfile?.displayName || 'User'}
+                {userProfile?.display_name || 'User'}
               </div>
               <div className="text-blue-400 text-sm">
-                {userProfile?.totalPoints || 0} points
+                {userProfile?.total_points || 0} points
               </div>
             </div>
 
