@@ -12,12 +12,20 @@ function MyApp({ Component, pageProps }) {
   const [userProfile, setUserProfile] = useState(null);
   const [teamColors, setTeamColors] = useState(null);
   const [loading, setLoading] = useState(true);
-  const hasLoadedProfile = useRef(false);
+  const isFetching = useRef(false);
 
   useEffect(() => {
     let mounted = true;
     
     const initAuth = async () => {
+      // Prevent duplicate fetches
+      if (isFetching.current) {
+        console.log('Already fetching, skipping');
+        return;
+      }
+      
+      isFetching.current = true;
+      
       try {
         const { data: { session } } = await supabase.auth.getSession();
         
@@ -26,13 +34,14 @@ function MyApp({ Component, pageProps }) {
         if (session?.user) {
           setUser(session.user);
           await fetchUserProfile(session.user.id);
-          hasLoadedProfile.current = true;
         } else {
           setLoading(false);
         }
       } catch (err) {
         console.error('Error getting session:', err);
         if (mounted) setLoading(false);
+      } finally {
+        isFetching.current = false;
       }
     };
 
@@ -49,20 +58,25 @@ function MyApp({ Component, pageProps }) {
         setUserProfile(null);
         setTeamColors(null);
         setLoading(false);
-        hasLoadedProfile.current = false;
+        isFetching.current = false;
         
         if (router.pathname !== '/' && router.pathname !== '/about' && router.pathname !== '/coach-signup') {
           router.push('/');
         }
-      } else if (event === 'SIGNED_IN' && session?.user && !hasLoadedProfile.current) {
-        // Only handle SIGNED_IN if we haven't loaded profile yet (actual login)
+      } else if (event === 'SIGNED_IN' && session?.user) {
+        // Prevent duplicate fetches - check if already fetching
+        if (isFetching.current) {
+          console.log('Already fetching from getSession, ignoring SIGNED_IN');
+          return;
+        }
+        
+        isFetching.current = true;
         setUser(session.user);
         setLoading(true);
         await fetchUserProfile(session.user.id);
-        hasLoadedProfile.current = true;
+        isFetching.current = false;
       }
-      // Completely ignore INITIAL_SESSION and TOKEN_REFRESHED
-      // They're handled by getSession() on mount
+      // Ignore INITIAL_SESSION and TOKEN_REFRESHED completely
     });
 
     return () => {
