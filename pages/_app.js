@@ -1,6 +1,6 @@
 // pages/_app.js
 import '../styles/globals.css';
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import { supabase } from '../lib/supabaseClient';
@@ -11,9 +11,17 @@ function MyApp({ Component, pageProps }) {
   const [user, setUser] = useState(null);
   const [userProfile, setUserProfile] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [initialLoadComplete, setInitialLoadComplete] = useState(false);
+  const isRefreshing = useRef(false);
 
-  const fetchUserProfile = useCallback(async (userId) => {
+  const fetchUserProfile = useCallback(async (userId, skipLoading = false) => {
+    if (isRefreshing.current && skipLoading) return;
+    
     try {
+      if (!skipLoading) {
+        isRefreshing.current = true;
+      }
+
       const { data, error } = await supabase
         .from('users')
         .select('*')
@@ -25,7 +33,7 @@ function MyApp({ Component, pageProps }) {
       setUserProfile(data);
 
       // Only redirect on initial load, not on tab switches
-      if (router.pathname === '/' && data) {
+      if (!initialLoadComplete && router.pathname === '/' && data) {
         if (!data.display_name) {
           router.push('/profile');
         } else if (data.role === 'coach') {
@@ -37,14 +45,18 @@ function MyApp({ Component, pageProps }) {
     } catch (err) {
       console.error('Error fetching profile:', err);
     } finally {
-      setLoading(false);
+      if (!skipLoading) {
+        setLoading(false);
+        setInitialLoadComplete(true);
+        isRefreshing.current = false;
+      }
     }
-  }, [router]);
+  }, [router, initialLoadComplete]);
 
   useEffect(() => {
     let mounted = true;
+    let authSubscription = null;
 
-    // Get initial session
     const initAuth = async () => {
       try {
         const { data: { session } } = await supabase.auth.getSession();
@@ -56,10 +68,14 @@ function MyApp({ Component, pageProps }) {
           await fetchUserProfile(session.user.id);
         } else {
           setLoading(false);
+          setInitialLoadComplete(true);
         }
       } catch (err) {
         console.error('Error getting session:', err);
-        if (mounted) setLoading(false);
+        if (mounted) {
+          setLoading(false);
+          setInitialLoadComplete(true);
+        }
       }
     };
 
@@ -74,38 +90,62 @@ function MyApp({ Component, pageProps }) {
       if (event === 'SIGNED_OUT') {
         setUser(null);
         setUserProfile(null);
+        setInitialLoadComplete(false);
         if (router.pathname !== '/' && router.pathname !== '/about' && router.pathname !== '/coach-signup') {
           router.push('/');
         }
-      } else if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+      } else if (event === 'SIGNED_IN') {
         if (session?.user) {
           setUser(session.user);
           await fetchUserProfile(session.user.id);
         }
-      } else if (event === 'USER_UPDATED') {
-        if (session?.user) {
-          setUser(session.user);
-        }
+      } else if (event === 'TOKEN_REFRESHED' && session?.user) {
+        // Silently refresh profile data without showing loading
+        setUser(session.user);
+        fetchUserProfile(session.user.id, true);
       }
     });
 
+    authSubscription = subscription;
+
     return () => {
       mounted = false;
-      subscription.unsubscribe();
+      if (authSubscription) {
+        authSubscription.unsubscribe();
+      }
     };
   }, [fetchUserProfile, router]);
 
   // Handle visibility change - refresh session when tab becomes visible
   useEffect(() => {
     const handleVisibilityChange = async () => {
-      if (document.visibilityState === 'visible' && user) {
-        // Refresh the session when user returns to tab
+      // Only refresh if page is visible and we have a user
+      if (document.visibilityState === 'visible' && user && !isRefreshing.current) {
         try {
-          const { data: { session } } = await supabase.auth.getSession();
-          if (session?.user && session.user.id === user.id) {
-            // Session is still valid, just refresh the profile data
-            await fetchUserProfile(session.user.id);
-          } else if (!session) {
+          isRefreshing.current = true;
+          
+          // Check if session is still valid
+          const { data: { session }, error } = await supabase.auth.getSession();
+          
+          if (error) {
+            console.error('Error checking session:', error);
+            isRefreshing.current = false;
+            return;
+          }
+          
+          if (session?.user) {
+            // Session valid - silently refresh profile data
+            setUser(session.user);
+            const { data: profileData } = await supabase
+              .from('users')
+              .select('*')
+              .eq('id', session.user.id)
+              .single();
+            
+            if (profileData) {
+              setUserProfile(profileData);
+            }
+          } else {
             // Session expired
             setUser(null);
             setUserProfile(null);
@@ -113,15 +153,25 @@ function MyApp({ Component, pageProps }) {
           }
         } catch (err) {
           console.error('Error refreshing session:', err);
+        } finally {
+          isRefreshing.current = false;
         }
       }
     };
 
     document.addEventListener('visibilitychange', handleVisibilityChange);
-    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-  }, [user, fetchUserProfile, router]);
+    
+    // Also handle page focus as a backup
+    window.addEventListener('focus', handleVisibilityChange);
 
-  if (loading) {
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleVisibilityChange);
+    };
+  }, [user, router]);
+
+  // Show loading only during initial load
+  if (loading && !initialLoadComplete) {
     return (
       <div className="min-h-screen bg-gray-900 flex items-center justify-center">
         <div className="text-white text-xl">Loading...</div>
