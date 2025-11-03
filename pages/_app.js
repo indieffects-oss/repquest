@@ -13,25 +13,27 @@ function MyApp({ Component, pageProps }) {
   const [teamColors, setTeamColors] = useState(null);
   const [loading, setLoading] = useState(true);
   const hasInitialized = useRef(false);
+  const isFetching = useRef(false);
 
   useEffect(() => {
     let mounted = true;
     
     const initAuth = async () => {
-      try {
-        // Set timeout to prevent infinite loading
-        const timeoutId = setTimeout(() => {
-          if (mounted) {
-            console.log('Auth timeout - completing load');
-            setLoading(false);
-          }
-        }, 3000);
+      // Prevent multiple simultaneous fetches
+      if (isFetching.current) return;
+      isFetching.current = true;
 
-        const { data: { session } } = await supabase.auth.getSession();
-        
-        clearTimeout(timeoutId);
+      try {
+        const { data: { session }, error } = await supabase.auth.getSession();
         
         if (!mounted) return;
+        
+        if (error) {
+          console.error('Session error:', error);
+          setLoading(false);
+          isFetching.current = false;
+          return;
+        }
         
         if (session?.user) {
           setUser(session.user);
@@ -42,6 +44,8 @@ function MyApp({ Component, pageProps }) {
       } catch (err) {
         console.error('Error getting session:', err);
         if (mounted) setLoading(false);
+      } finally {
+        isFetching.current = false;
       }
     };
 
@@ -59,18 +63,31 @@ function MyApp({ Component, pageProps }) {
         setTeamColors(null);
         setLoading(false);
         hasInitialized.current = false;
+        isFetching.current = false;
         
         if (router.pathname !== '/' && router.pathname !== '/about' && router.pathname !== '/coach-signup') {
           router.push('/');
         }
       } else if (event === 'SIGNED_IN' && session?.user) {
+        // Only process first SIGNED_IN
         if (!hasInitialized.current) {
           setUser(session.user);
           setLoading(true);
           await fetchUserProfile(session.user.id);
           hasInitialized.current = true;
         } else {
+          // Duplicate SIGNED_IN from tab switch - just update user
           setUser(session.user);
+        }
+      } else if (event === 'INITIAL_SESSION' && session?.user) {
+        // This happens on page load/refresh
+        if (!hasInitialized.current && !isFetching.current) {
+          setUser(session.user);
+          setLoading(true);
+          isFetching.current = true;
+          await fetchUserProfile(session.user.id);
+          hasInitialized.current = true;
+          isFetching.current = false;
         }
       }
     });
@@ -89,20 +106,23 @@ function MyApp({ Component, pageProps }) {
         .eq('id', userId)
         .single();
 
-      if (error) throw error;
+      if (error) {
+        console.error('Profile fetch error:', error);
+        throw error;
+      }
 
       setUserProfile(data);
       
-      // Fetch team colors in parallel (non-blocking)
+      // Fetch team colors (non-blocking)
       if (data.role === 'coach') {
-        fetchCoachTeamColors(userId).catch(err => console.log('Team colors fetch failed'));
+        fetchCoachTeamColors(userId).catch(() => {});
       } else if (data.role === 'player') {
-        fetchPlayerTeamColors(userId).catch(err => console.log('Team colors fetch failed'));
+        fetchPlayerTeamColors(userId).catch(() => {});
       }
       
       setLoading(false);
 
-      // Redirect after successful profile fetch (only on login page)
+      // Only redirect if on login page
       if (router.pathname === '/') {
         if (!data.display_name) {
           router.push('/profile');
@@ -115,46 +135,50 @@ function MyApp({ Component, pageProps }) {
     } catch (err) {
       console.error('Error fetching profile:', err);
       setLoading(false);
+      // If profile fetch fails, redirect to login
+      if (router.pathname !== '/') {
+        router.push('/');
+      }
     }
   };
 
   const fetchCoachTeamColors = async (userId) => {
-    const { data, error } = await supabase
+    const { data } = await supabase
       .from('teams')
       .select('primary_color, secondary_color')
       .eq('coach_id', userId)
       .limit(1)
-      .single();
+      .maybeSingle();
 
-    if (data && !error) {
-      setTeamColors({
-        primary: data.primary_color || '#3B82F6',
-        secondary: data.secondary_color || '#1E40AF'
-      });
-      applyTeamColors(data.primary_color || '#3B82F6', data.secondary_color || '#1E40AF');
+    if (data) {
+      const primary = data.primary_color || '#3B82F6';
+      const secondary = data.secondary_color || '#1E40AF';
+      setTeamColors({ primary, secondary });
+      applyTeamColors(primary, secondary);
     }
   };
 
   const fetchPlayerTeamColors = async (userId) => {
-    const { data, error } = await supabase
+    const { data } = await supabase
       .from('team_members')
       .select('teams(primary_color, secondary_color)')
       .eq('user_id', userId)
       .limit(1)
-      .single();
+      .maybeSingle();
 
-    if (data?.teams && !error) {
-      setTeamColors({
-        primary: data.teams.primary_color || '#3B82F6',
-        secondary: data.teams.secondary_color || '#1E40AF'
-      });
-      applyTeamColors(data.teams.primary_color || '#3B82F6', data.teams.secondary_color || '#1E40AF');
+    if (data?.teams) {
+      const primary = data.teams.primary_color || '#3B82F6';
+      const secondary = data.teams.secondary_color || '#1E40AF';
+      setTeamColors({ primary, secondary });
+      applyTeamColors(primary, secondary);
     }
   };
 
   const applyTeamColors = (primary, secondary) => {
-    document.documentElement.style.setProperty('--color-primary', primary);
-    document.documentElement.style.setProperty('--color-secondary', secondary);
+    if (typeof document !== 'undefined') {
+      document.documentElement.style.setProperty('--color-primary', primary);
+      document.documentElement.style.setProperty('--color-secondary', secondary);
+    }
   };
 
   useEffect(() => {
