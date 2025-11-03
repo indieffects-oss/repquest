@@ -13,14 +13,12 @@ function MyApp({ Component, pageProps }) {
   const [teamColors, setTeamColors] = useState(null);
   const [loading, setLoading] = useState(true);
   const isInitialized = useRef(false);
+  const lastEventTime = useRef(0);
 
   useEffect(() => {
     let mounted = true;
     
     const initAuth = async () => {
-      // Only run once
-      if (isInitialized.current) return;
-      
       try {
         const { data: { session } } = await supabase.auth.getSession();
         
@@ -41,32 +39,46 @@ function MyApp({ Component, pageProps }) {
 
     initAuth();
 
-    // Listen for auth changes - but ONLY care about sign out
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (!mounted) return;
       
       console.log('Auth event:', event);
       
-      // ONLY handle sign out - ignore everything else
       if (event === 'SIGNED_OUT') {
         setUser(null);
         setUserProfile(null);
         setTeamColors(null);
         setLoading(false);
         isInitialized.current = false;
+        lastEventTime.current = 0;
         
         if (router.pathname !== '/' && router.pathname !== '/about' && router.pathname !== '/coach-signup') {
           router.push('/');
         }
+      } else if (event === 'SIGNED_IN' && session?.user) {
+        // Prevent processing duplicate SIGNED_IN events within 2 seconds
+        const now = Date.now();
+        if (now - lastEventTime.current < 2000) {
+          console.log('Ignoring duplicate SIGNED_IN');
+          return;
+        }
+        lastEventTime.current = now;
+
+        // This is a real sign-in
+        setUser(session.user);
+        setLoading(true);
+        await fetchUserProfile(session.user.id);
+        isInitialized.current = true;
       }
-      // Ignore SIGNED_IN, INITIAL_SESSION, TOKEN_REFRESHED - all are handled by getSession
+      // Ignore INITIAL_SESSION and TOKEN_REFRESHED
     });
 
     return () => {
       mounted = false;
       subscription.unsubscribe();
     };
-  }, []); // Empty deps - only run once
+  }, [router]);
 
   const fetchUserProfile = async (userId) => {
     try {
@@ -80,11 +92,11 @@ function MyApp({ Component, pageProps }) {
 
       setUserProfile(data);
       
-      // Fetch team colors (fire and forget)
+      // Fetch team colors based on role
       if (data.role === 'coach') {
-        fetchCoachTeamColors(userId);
+        await fetchCoachTeamColors(userId);
       } else if (data.role === 'player') {
-        fetchPlayerTeamColors(userId);
+        await fetchPlayerTeamColors(userId);
       }
       
       setLoading(false);
@@ -107,46 +119,70 @@ function MyApp({ Component, pageProps }) {
 
   const fetchCoachTeamColors = async (userId) => {
     try {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('teams')
         .select('primary_color, secondary_color')
         .eq('coach_id', userId)
         .limit(1)
         .maybeSingle();
 
+      if (error) {
+        console.error('Error fetching coach team colors:', error);
+        return;
+      }
+
       if (data) {
+        console.log('Coach team colors:', data);
         const primary = data.primary_color || '#3B82F6';
         const secondary = data.secondary_color || '#1E40AF';
         setTeamColors({ primary, secondary });
         applyTeamColors(primary, secondary);
+      } else {
+        console.log('Coach has no team, using defaults');
+        applyTeamColors('#3B82F6', '#1E40AF');
       }
     } catch (err) {
-      console.log('Team colors not found, using defaults');
+      console.error('Team colors fetch error:', err);
+      applyTeamColors('#3B82F6', '#1E40AF');
     }
   };
 
   const fetchPlayerTeamColors = async (userId) => {
     try {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('team_members')
-        .select('teams(primary_color, secondary_color)')
+        .select('team_id, teams(primary_color, secondary_color)')
         .eq('user_id', userId)
         .limit(1)
         .maybeSingle();
 
-      if (data?.teams) {
+      if (error) {
+        console.error('Error fetching player team colors:', error);
+        applyTeamColors('#3B82F6', '#1E40AF');
+        return;
+      }
+
+      console.log('Player team data:', data);
+
+      if (data && data.teams) {
         const primary = data.teams.primary_color || '#3B82F6';
         const secondary = data.teams.secondary_color || '#1E40AF';
+        console.log('Player team colors:', { primary, secondary });
         setTeamColors({ primary, secondary });
         applyTeamColors(primary, secondary);
+      } else {
+        console.log('Player not on a team, using defaults');
+        applyTeamColors('#3B82F6', '#1E40AF');
       }
     } catch (err) {
-      console.log('Team colors not found, using defaults');
+      console.error('Team colors fetch error:', err);
+      applyTeamColors('#3B82F6', '#1E40AF');
     }
   };
 
   const applyTeamColors = (primary, secondary) => {
     if (typeof document !== 'undefined') {
+      console.log('Applying colors:', { primary, secondary });
       document.documentElement.style.setProperty('--color-primary', primary);
       document.documentElement.style.setProperty('--color-secondary', secondary);
     }
