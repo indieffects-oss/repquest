@@ -13,13 +13,12 @@ function MyApp({ Component, pageProps }) {
   const [teamColors, setTeamColors] = useState(null);
   const [loading, setLoading] = useState(true);
   const isFetching = useRef(false);
-  const hasCompletedInitialLoad = useRef(false);
+  const hasUserProfile = useRef(false);
 
   useEffect(() => {
     let mounted = true;
     
     const initAuth = async () => {
-      // Prevent duplicate fetches
       if (isFetching.current) {
         console.log('Already fetching, skipping');
         return;
@@ -35,15 +34,13 @@ function MyApp({ Component, pageProps }) {
         if (session?.user) {
           setUser(session.user);
           await fetchUserProfile(session.user.id);
-          hasCompletedInitialLoad.current = true;
+          hasUserProfile.current = true;
         } else {
           setLoading(false);
-          hasCompletedInitialLoad.current = true;
         }
       } catch (err) {
         console.error('Error getting session:', err);
         if (mounted) setLoading(false);
-        hasCompletedInitialLoad.current = true;
       } finally {
         isFetching.current = false;
       }
@@ -55,7 +52,7 @@ function MyApp({ Component, pageProps }) {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (!mounted) return;
       
-      console.log('Auth event:', event, 'Initial load complete:', hasCompletedInitialLoad.current);
+      console.log('Auth event:', event, 'Has profile:', hasUserProfile.current);
       
       if (event === 'SIGNED_OUT') {
         setUser(null);
@@ -63,32 +60,32 @@ function MyApp({ Component, pageProps }) {
         setTeamColors(null);
         setLoading(false);
         isFetching.current = false;
-        hasCompletedInitialLoad.current = false;
+        hasUserProfile.current = false;
         
         if (router.pathname !== '/' && router.pathname !== '/about' && router.pathname !== '/coach-signup') {
           router.push('/');
         }
       } else if (event === 'SIGNED_IN' && session?.user) {
-        // Only process SIGNED_IN if we haven't completed initial load yet
-        // This means it's a real login, not a tab switch
-        if (hasCompletedInitialLoad.current) {
-          console.log('Already loaded, ignoring SIGNED_IN from tab switch');
-          // Just silently update user, don't set loading or fetch profile
+        // Only process SIGNED_IN if we don't have a profile yet
+        // If we have a profile, this is from tab switch
+        if (hasUserProfile.current) {
+          console.log('Already have profile, ignoring SIGNED_IN from tab switch');
           setUser(session.user);
           return;
         }
         
-        // This is a real sign-in
+        // This is a real sign-in - we don't have profile yet
         if (isFetching.current) {
-          console.log('Already fetching, ignoring SIGNED_IN');
+          console.log('Already fetching, ignoring duplicate SIGNED_IN');
           return;
         }
         
+        console.log('Processing SIGNED_IN - real login');
         isFetching.current = true;
         setUser(session.user);
         setLoading(true);
         await fetchUserProfile(session.user.id);
-        hasCompletedInitialLoad.current = true;
+        hasUserProfile.current = true;
         isFetching.current = false;
       }
       // Ignore INITIAL_SESSION and TOKEN_REFRESHED completely
