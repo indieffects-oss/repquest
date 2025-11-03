@@ -13,8 +13,15 @@ function MyApp({ Component, pageProps }) {
   const [teamColors, setTeamColors] = useState(null);
   const [loading, setLoading] = useState(true);
   const hasInitialized = useRef(false);
+  const loadingTimeout = useRef(null);
 
   useEffect(() => {
+    // Set a safety timeout - if loading for more than 5 seconds, force it to finish
+    loadingTimeout.current = setTimeout(() => {
+      console.log('Loading timeout - forcing completion');
+      setLoading(false);
+    }, 5000);
+
     // Get initial session
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
@@ -22,7 +29,12 @@ function MyApp({ Component, pageProps }) {
         fetchUserProfile(session.user.id);
       } else {
         setLoading(false);
+        clearTimeout(loadingTimeout.current);
       }
+    }).catch(err => {
+      console.error('Error getting session:', err);
+      setLoading(false);
+      clearTimeout(loadingTimeout.current);
     });
 
     // Listen for auth changes
@@ -35,6 +47,7 @@ function MyApp({ Component, pageProps }) {
         setTeamColors(null);
         setLoading(false);
         hasInitialized.current = false;
+        clearTimeout(loadingTimeout.current);
         
         if (router.pathname !== '/' && router.pathname !== '/about' && router.pathname !== '/coach-signup') {
           router.push('/');
@@ -43,6 +56,12 @@ function MyApp({ Component, pageProps }) {
         if (!hasInitialized.current) {
           setUser(session.user);
           setLoading(true);
+          // Reset timeout
+          clearTimeout(loadingTimeout.current);
+          loadingTimeout.current = setTimeout(() => {
+            console.log('Loading timeout - forcing completion');
+            setLoading(false);
+          }, 5000);
           await fetchUserProfile(session.user.id);
           hasInitialized.current = true;
         } else {
@@ -51,7 +70,10 @@ function MyApp({ Component, pageProps }) {
       }
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      subscription.unsubscribe();
+      clearTimeout(loadingTimeout.current);
+    };
   }, [router]);
 
   const fetchUserProfile = async (userId) => {
@@ -73,9 +95,10 @@ function MyApp({ Component, pageProps }) {
         await fetchPlayerTeamColors(userId);
       }
       
+      clearTimeout(loadingTimeout.current);
       setLoading(false);
 
-      // Redirect after successful profile fetch
+      // Redirect after successful profile fetch (only on login page)
       if (router.pathname === '/') {
         if (!data.display_name) {
           router.push('/profile');
@@ -87,13 +110,13 @@ function MyApp({ Component, pageProps }) {
       }
     } catch (err) {
       console.error('Error fetching profile:', err);
+      clearTimeout(loadingTimeout.current);
       setLoading(false);
     }
   };
 
   const fetchCoachTeamColors = async (userId) => {
     try {
-      // Get coach's first team colors
       const { data, error } = await supabase
         .from('teams')
         .select('primary_color, secondary_color')
@@ -115,7 +138,6 @@ function MyApp({ Component, pageProps }) {
 
   const fetchPlayerTeamColors = async (userId) => {
     try {
-      // Get player's team colors
       const { data, error } = await supabase
         .from('team_members')
         .select('teams(primary_color, secondary_color)')
@@ -136,20 +158,21 @@ function MyApp({ Component, pageProps }) {
   };
 
   const applyTeamColors = (primary, secondary) => {
-    // Apply CSS variables to root
     document.documentElement.style.setProperty('--color-primary', primary);
     document.documentElement.style.setProperty('--color-secondary', secondary);
   };
 
   useEffect(() => {
-    // Apply default colors on mount
     applyTeamColors('#3B82F6', '#1E40AF');
   }, []);
 
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-900 flex items-center justify-center">
-        <div className="text-white text-xl">Loading...</div>
+        <div className="text-center">
+          <div className="text-white text-xl mb-4">Loading...</div>
+          <div className="text-gray-400 text-sm">If this takes too long, try refreshing</div>
+        </div>
       </div>
     );
   }
