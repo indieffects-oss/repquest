@@ -23,10 +23,11 @@ function MyApp({ Component, pageProps }) {
       }
     });
 
-    // Listen for auth changes
+    // Listen for auth changes - ONLY sign in/out, ignore everything else
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       console.log('Auth event:', event);
       
+      // Only handle explicit sign in and sign out
       if (event === 'SIGNED_OUT') {
         setUser(null);
         setUserProfile(null);
@@ -35,26 +36,12 @@ function MyApp({ Component, pageProps }) {
         if (router.pathname !== '/' && router.pathname !== '/about' && router.pathname !== '/coach-signup') {
           router.push('/');
         }
-      } else if (event === 'SIGNED_IN') {
-        if (session?.user) {
-          setUser(session.user);
-          setLoading(true);
-          await fetchUserProfile(session.user.id);
-        }
-      } else if (event === 'TOKEN_REFRESHED') {
-        if (session?.user) {
-          setUser(session.user);
-          // Silently update profile in background
-          supabase
-            .from('users')
-            .select('*')
-            .eq('id', session.user.id)
-            .single()
-            .then(({ data }) => {
-              if (data) setUserProfile(data);
-            });
-        }
+      } else if (event === 'SIGNED_IN' && session?.user) {
+        setUser(session.user);
+        setLoading(true);
+        await fetchUserProfile(session.user.id);
       }
+      // Ignore TOKEN_REFRESHED and all other events - do nothing
     });
 
     return () => subscription.unsubscribe();
