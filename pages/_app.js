@@ -12,91 +12,61 @@ function MyApp({ Component, pageProps }) {
   const [userProfile, setUserProfile] = useState(null);
   const [teamColors, setTeamColors] = useState(null);
   const [loading, setLoading] = useState(true);
-  const hasInitialized = useRef(false);
-  const isFetching = useRef(false);
+  const isInitialized = useRef(false);
 
   useEffect(() => {
     let mounted = true;
     
     const initAuth = async () => {
-      // Prevent multiple simultaneous fetches
-      if (isFetching.current) return;
-      isFetching.current = true;
-
+      // Only run once
+      if (isInitialized.current) return;
+      
       try {
-        const { data: { session }, error } = await supabase.auth.getSession();
+        const { data: { session } } = await supabase.auth.getSession();
         
         if (!mounted) return;
-        
-        if (error) {
-          console.error('Session error:', error);
-          setLoading(false);
-          isFetching.current = false;
-          return;
-        }
         
         if (session?.user) {
           setUser(session.user);
           await fetchUserProfile(session.user.id);
+          isInitialized.current = true;
         } else {
           setLoading(false);
         }
       } catch (err) {
         console.error('Error getting session:', err);
         if (mounted) setLoading(false);
-      } finally {
-        isFetching.current = false;
       }
     };
 
     initAuth();
 
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+    // Listen for auth changes - but ONLY care about sign out
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (!mounted) return;
       
       console.log('Auth event:', event);
       
+      // ONLY handle sign out - ignore everything else
       if (event === 'SIGNED_OUT') {
         setUser(null);
         setUserProfile(null);
         setTeamColors(null);
         setLoading(false);
-        hasInitialized.current = false;
-        isFetching.current = false;
+        isInitialized.current = false;
         
         if (router.pathname !== '/' && router.pathname !== '/about' && router.pathname !== '/coach-signup') {
           router.push('/');
         }
-      } else if (event === 'SIGNED_IN' && session?.user) {
-        // Only process first SIGNED_IN
-        if (!hasInitialized.current) {
-          setUser(session.user);
-          setLoading(true);
-          await fetchUserProfile(session.user.id);
-          hasInitialized.current = true;
-        } else {
-          // Duplicate SIGNED_IN from tab switch - just update user
-          setUser(session.user);
-        }
-      } else if (event === 'INITIAL_SESSION' && session?.user) {
-        // This happens on page load/refresh
-        if (!hasInitialized.current && !isFetching.current) {
-          setUser(session.user);
-          setLoading(true);
-          isFetching.current = true;
-          await fetchUserProfile(session.user.id);
-          hasInitialized.current = true;
-          isFetching.current = false;
-        }
       }
+      // Ignore SIGNED_IN, INITIAL_SESSION, TOKEN_REFRESHED - all are handled by getSession
     });
 
     return () => {
       mounted = false;
       subscription.unsubscribe();
     };
-  }, [router]);
+  }, []); // Empty deps - only run once
 
   const fetchUserProfile = async (userId) => {
     try {
@@ -106,23 +76,20 @@ function MyApp({ Component, pageProps }) {
         .eq('id', userId)
         .single();
 
-      if (error) {
-        console.error('Profile fetch error:', error);
-        throw error;
-      }
+      if (error) throw error;
 
       setUserProfile(data);
       
-      // Fetch team colors (non-blocking)
+      // Fetch team colors (fire and forget)
       if (data.role === 'coach') {
-        fetchCoachTeamColors(userId).catch(() => {});
+        fetchCoachTeamColors(userId);
       } else if (data.role === 'player') {
-        fetchPlayerTeamColors(userId).catch(() => {});
+        fetchPlayerTeamColors(userId);
       }
       
       setLoading(false);
 
-      // Only redirect if on login page
+      // Redirect only if on login page
       if (router.pathname === '/') {
         if (!data.display_name) {
           router.push('/profile');
@@ -135,42 +102,46 @@ function MyApp({ Component, pageProps }) {
     } catch (err) {
       console.error('Error fetching profile:', err);
       setLoading(false);
-      // If profile fetch fails, redirect to login
-      if (router.pathname !== '/') {
-        router.push('/');
-      }
     }
   };
 
   const fetchCoachTeamColors = async (userId) => {
-    const { data } = await supabase
-      .from('teams')
-      .select('primary_color, secondary_color')
-      .eq('coach_id', userId)
-      .limit(1)
-      .maybeSingle();
+    try {
+      const { data } = await supabase
+        .from('teams')
+        .select('primary_color, secondary_color')
+        .eq('coach_id', userId)
+        .limit(1)
+        .maybeSingle();
 
-    if (data) {
-      const primary = data.primary_color || '#3B82F6';
-      const secondary = data.secondary_color || '#1E40AF';
-      setTeamColors({ primary, secondary });
-      applyTeamColors(primary, secondary);
+      if (data) {
+        const primary = data.primary_color || '#3B82F6';
+        const secondary = data.secondary_color || '#1E40AF';
+        setTeamColors({ primary, secondary });
+        applyTeamColors(primary, secondary);
+      }
+    } catch (err) {
+      console.log('Team colors not found, using defaults');
     }
   };
 
   const fetchPlayerTeamColors = async (userId) => {
-    const { data } = await supabase
-      .from('team_members')
-      .select('teams(primary_color, secondary_color)')
-      .eq('user_id', userId)
-      .limit(1)
-      .maybeSingle();
+    try {
+      const { data } = await supabase
+        .from('team_members')
+        .select('teams(primary_color, secondary_color)')
+        .eq('user_id', userId)
+        .limit(1)
+        .maybeSingle();
 
-    if (data?.teams) {
-      const primary = data.teams.primary_color || '#3B82F6';
-      const secondary = data.teams.secondary_color || '#1E40AF';
-      setTeamColors({ primary, secondary });
-      applyTeamColors(primary, secondary);
+      if (data?.teams) {
+        const primary = data.teams.primary_color || '#3B82F6';
+        const secondary = data.teams.secondary_color || '#1E40AF';
+        setTeamColors({ primary, secondary });
+        applyTeamColors(primary, secondary);
+      }
+    } catch (err) {
+      console.log('Team colors not found, using defaults');
     }
   };
 
