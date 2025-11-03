@@ -102,7 +102,7 @@ export default function Dashboard({ user, userProfile }) {
 
         const { error } = await supabase.from('drills').insert({
           ...drillData,
-          coach_id: user.id,
+          created_by: user.id,
           sort_order: nextSortOrder
         });
 

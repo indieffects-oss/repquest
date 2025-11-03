@@ -154,7 +154,7 @@ export default function PlayerDrill({ user, userProfile }) {
     setCompleted(false);
   };
 
-  // UPDATED handleSubmit function for pages/player.js
+// UPDATED handleSubmit function for pages/player.js
 // Replace the existing handleSubmit function (around line 157) with this:
 
 const handleSubmit = async () => {
@@ -165,30 +165,30 @@ const handleSubmit = async () => {
     return;
   }
 
+  // Check daily limit BEFORE anything else
+  if (drill.daily_limit) {
+    const today = new Date().toISOString().split('T')[0];
+    const { data: todayCompletion } = await supabase
+      .from('drill_completions_daily')
+      .select('*')
+      .eq('user_id', user.id)
+      .eq('drill_id', drill.id)
+      .eq('completed_date', today)
+      .maybeSingle();
+
+    if (todayCompletion) {
+      alert('⏰ You already completed this drill today! No points awarded. Come back tomorrow!');
+      router.push('/drills');
+      return;
+    }
+  }
+
   setSubmitting(true);
 
   try {
     const repPoints = repsCount * (drill.points_per_rep || 0);
     const bonusPoints = drill.points_for_completion || 0;
     const totalPoints = repPoints + bonusPoints;
-
-    //Check if daily limit and already completed today
-    if (drill.daily_limit) {
-      const today = new Date().toISOString().split('T')[0];
-      const { data: todayCompletion } = await supabase
-        .from('drill_completions_daily')
-        .select('*')
-        .eq('user_id', user.id)
-        .eq('drill_id', drill.id)
-        .eq('completed_date', today)
-        .maybeSingle();
-
-      if (todayCompletion) {
-        alert('⏰ You already completed this drill today! Points were not awarded. Come back tomorrow!');
-        router.push('/drills');
-        return;
-      }
-    }
 
     // Insert drill result
     const { error: resultError } = await supabase
