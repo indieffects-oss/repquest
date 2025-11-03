@@ -1,4 +1,4 @@
-// pages/dashboard.js - v0.41 with drill management features
+// pages/dashboard.js - v0.41 FIXED - All drill types, test button, activate in form
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import { supabase } from '../lib/supabaseClient';
@@ -70,20 +70,22 @@ export default function Dashboard({ user, userProfile }) {
 
     setSaving(true);
     try {
+      const drillData = {
+        name: form.name.trim(),
+        type: form.type,
+        description: form.description.trim(),
+        video_url: form.video_url.trim(),
+        duration: form.type === 'timer' ? parseInt(form.duration) : null,
+        points_per_rep: (form.type === 'check' || form.type === 'stopwatch') ? 0 : parseInt(form.points_per_rep),
+        points_for_completion: parseInt(form.points_for_completion),
+        is_active: form.is_active,
+        daily_limit: form.daily_limit
+      };
+
       if (editingDrill) {
         const { error } = await supabase
           .from('drills')
-          .update({
-            name: form.name.trim(),
-            type: form.type,
-            description: form.description.trim(),
-            video_url: form.video_url.trim(),
-            duration: form.type === 'timer' ? parseInt(form.duration) : null,
-            points_per_rep: parseInt(form.points_per_rep),
-            points_for_completion: parseInt(form.points_for_completion),
-            is_active: form.is_active,
-            daily_limit: form.daily_limit
-          })
+          .update(drillData)
           .eq('id', editingDrill.id);
 
         if (error) throw error;
@@ -96,19 +98,11 @@ export default function Dashboard({ user, userProfile }) {
           .order('sort_order', { ascending: false })
           .limit(1);
         
-        const nextSortOrder = (maxData && maxData[0]?.sort_order) ? maxData[0].sort_order + 1 : 0;
+        const nextSortOrder = (maxData && maxData[0]?.sort_order != null) ? maxData[0].sort_order + 1 : 0;
 
         const { error } = await supabase.from('drills').insert({
-          name: form.name.trim(),
-          type: form.type,
-          description: form.description.trim(),
-          video_url: form.video_url.trim(),
-          duration: form.type === 'timer' ? parseInt(form.duration) : null,
-          points_per_rep: parseInt(form.points_per_rep),
-          points_for_completion: parseInt(form.points_for_completion),
+          ...drillData,
           coach_id: user.id,
-          is_active: form.is_active,
-          daily_limit: form.daily_limit,
           sort_order: nextSortOrder
         });
 
@@ -120,7 +114,7 @@ export default function Dashboard({ user, userProfile }) {
       fetchDrills();
     } catch (err) {
       console.error('Error saving drill:', err);
-      alert('Failed to save drill');
+      alert('Failed to save drill: ' + err.message);
     } finally {
       setSaving(false);
     }
@@ -134,26 +128,11 @@ export default function Dashboard({ user, userProfile }) {
       description: drill.description || '',
       video_url: drill.video_url || '',
       duration: drill.duration || 60,
-      points_per_rep: drill.points_per_rep,
-      points_for_completion: drill.points_for_completion,
+      points_per_rep: drill.points_per_rep || 0,
+      points_for_completion: drill.points_for_completion || 0,
       is_active: drill.is_active !== false,
       daily_limit: drill.daily_limit || false
     });
-  };
-
-  const toggleActive = async (drill) => {
-    try {
-      const { error } = await supabase
-        .from('drills')
-        .update({ is_active: !drill.is_active })
-        .eq('id', drill.id);
-
-      if (error) throw error;
-      fetchDrills();
-    } catch (err) {
-      console.error('Error toggling drill:', err);
-      alert('Failed to update drill');
-    }
   };
 
   const moveDrill = async (drill, direction) => {
@@ -204,6 +183,16 @@ export default function Dashboard({ user, userProfile }) {
     }
   };
 
+  const getDrillTypeLabel = (type) => {
+    const labels = {
+      'timer': '⏱️ Timer',
+      'stopwatch': '⏱️ Stopwatch',
+      'reps': '🔢 Rep Counter',
+      'check': '✓ Checkbox'
+    };
+    return labels[type] || type;
+  };
+
   if (loading) return <div className="p-6 text-white">Loading...</div>;
 
   return (
@@ -232,14 +221,16 @@ export default function Dashboard({ user, userProfile }) {
               </div>
 
               <div>
-                <label className="block text-gray-300 text-sm mb-2">Type</label>
+                <label className="block text-gray-300 text-sm mb-2">Type *</label>
                 <select
                   value={form.type}
                   onChange={(e) => setForm({ ...form, type: e.target.value })}
                   className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:border-blue-500"
                 >
                   <option value="timer">Timer</option>
+                  <option value="stopwatch">Stopwatch</option>
                   <option value="reps">Rep Counter</option>
+                  <option value="check">Checkbox</option>
                 </select>
               </div>
             </div>
@@ -249,7 +240,7 @@ export default function Dashboard({ user, userProfile }) {
               <textarea
                 value={form.description}
                 onChange={(e) => setForm({ ...form, description: e.target.value })}
-                placeholder="Make 10 free throws in a row"
+                placeholder="Make 10 free throws in a row..."
                 className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
                 rows="3"
               />
@@ -280,18 +271,20 @@ export default function Dashboard({ user, userProfile }) {
                 </div>
               )}
 
-              <div>
-                <label className="block text-gray-300 text-sm mb-2">Points/Rep</label>
-                <input
-                  type="number"
-                  value={form.points_per_rep}
-                  onChange={(e) => setForm({ ...form, points_per_rep: e.target.value })}
-                  min="0"
-                  className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:border-blue-500"
-                />
-              </div>
+              {form.type !== 'check' && form.type !== 'stopwatch' && (
+                <div>
+                  <label className="block text-gray-300 text-sm mb-2">Points/Rep</label>
+                  <input
+                    type="number"
+                    value={form.points_per_rep}
+                    onChange={(e) => setForm({ ...form, points_per_rep: e.target.value })}
+                    min="0"
+                    className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+              )}
 
-              <div>
+              <div className={form.type === 'check' || form.type === 'stopwatch' ? 'col-span-2' : ''}>
                 <label className="block text-gray-300 text-sm mb-2">Completion Bonus</label>
                 <input
                   type="number"
@@ -303,9 +296,9 @@ export default function Dashboard({ user, userProfile }) {
               </div>
             </div>
 
-            {/* New Toggle Options */}
+            {/* Toggle Options */}
             <div className="flex flex-wrap gap-6">
-              <label className="flex items-center gap-2 text-gray-300">
+              <label className="flex items-center gap-2 text-gray-300 cursor-pointer">
                 <input
                   type="checkbox"
                   checked={form.is_active}
@@ -315,7 +308,7 @@ export default function Dashboard({ user, userProfile }) {
                 <span className="text-sm">Active (visible to players)</span>
               </label>
 
-              <label className="flex items-center gap-2 text-gray-300">
+              <label className="flex items-center gap-2 text-gray-300 cursor-pointer">
                 <input
                   type="checkbox"
                   checked={form.daily_limit}
@@ -371,7 +364,7 @@ export default function Dashboard({ user, userProfile }) {
                       <button
                         onClick={() => moveDrill(drill, 'up')}
                         disabled={index === 0}
-                        className="p-1 hover:bg-gray-600 rounded disabled:opacity-30 disabled:cursor-not-allowed text-white"
+                        className="p-1 hover:bg-gray-600 rounded disabled:opacity-30 disabled:cursor-not-allowed text-white text-xs"
                         title="Move up"
                       >
                         ▲
@@ -379,7 +372,7 @@ export default function Dashboard({ user, userProfile }) {
                       <button
                         onClick={() => moveDrill(drill, 'down')}
                         disabled={index === drills.length - 1}
-                        className="p-1 hover:bg-gray-600 rounded disabled:opacity-30 disabled:cursor-not-allowed text-white"
+                        className="p-1 hover:bg-gray-600 rounded disabled:opacity-30 disabled:cursor-not-allowed text-white text-xs"
                         title="Move down"
                       >
                         ▼
@@ -399,19 +392,16 @@ export default function Dashboard({ user, userProfile }) {
                               <span className="ml-2 text-xs bg-yellow-600 px-2 py-1 rounded">1/DAY</span>
                             )}
                           </h3>
-                          <p className="text-gray-400 text-sm capitalize">{drill.type}</p>
+                          <p className="text-gray-400 text-sm">{getDrillTypeLabel(drill.type)}</p>
                         </div>
                         
                         <div className="flex gap-2">
                           <button
-                            onClick={() => toggleActive(drill)}
-                            className={`px-3 py-1 rounded text-sm font-semibold transition ${
-                              drill.is_active === false
-                                ? 'bg-green-600 hover:bg-green-700 text-white'
-                                : 'bg-yellow-600 hover:bg-yellow-700 text-white'
-                            }`}
+                            onClick={() => router.push(`/player?drillId=${drill.id}`)}
+                            className="px-3 py-1 bg-green-600 hover:bg-green-700 text-white rounded text-sm font-semibold transition"
+                            title="Test this drill"
                           >
-                            {drill.is_active === false ? 'Activate' : 'Deactivate'}
+                            Test
                           </button>
                           
                           <button
@@ -435,10 +425,12 @@ export default function Dashboard({ user, userProfile }) {
                       )}
 
                       <div className="flex flex-wrap gap-3 text-sm text-gray-400">
-                        {drill.type === 'timer' && (
+                        {drill.type === 'timer' && drill.duration && (
                           <span>⏱️ {drill.duration}s</span>
                         )}
-                        <span>💎 {drill.points_per_rep} pts/rep</span>
+                        {drill.type !== 'check' && drill.type !== 'stopwatch' && (
+                          <span>💎 {drill.points_per_rep} pts/rep</span>
+                        )}
                         <span>🎁 {drill.points_for_completion} bonus</span>
                       </div>
                     </div>

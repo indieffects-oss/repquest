@@ -85,15 +85,15 @@ export default function DrillsList({ user, userProfile }) {
         ) : (
           <div className="grid md:grid-cols-2 gap-4">
             {drills.map(drill => {
-              const completedToday = drill.daily_limit && completedToday.has(drill.id);
+              const isCompletedToday = drill.daily_limit && completedToday.has(drill.id);
               
               return (
                 <button
                   key={drill.id}
                   onClick={() => startDrill(drill)}
-                  disabled={completedToday}
+                  disabled={isCompletedToday}
                   className={`bg-gray-800 hover:bg-gray-750 border-2 rounded-xl p-6 text-left transition group ${
-                    completedToday
+                    isCompletedToday
                       ? 'border-gray-600 opacity-60 cursor-not-allowed'
                       : 'border-gray-700 hover:border-blue-500'
                   }`}
@@ -104,11 +104,11 @@ export default function DrillsList({ user, userProfile }) {
                     </h3>
                     {drill.daily_limit && (
                       <span className={`text-xs px-2 py-1 rounded font-semibold ${
-                        completedToday
+                        isCompletedToday
                           ? 'bg-gray-600 text-gray-400'
                           : 'bg-yellow-600 text-white'
                       }`}>
-                        {completedToday ? '✓ DONE TODAY' : '1/DAY'}
+                        {isCompletedToday ? '✓ DONE TODAY' : '1/DAY'}
                       </span>
                     )}
                   </div>
@@ -119,11 +119,15 @@ export default function DrillsList({ user, userProfile }) {
 
                   <div className="flex items-center gap-4 text-sm">
                     <span className="text-gray-400 capitalize">
-                      {drill.type === 'timer' ? `⏱️ ${drill.duration}s` : '🔢 Rep Counter'}
+                      {drill.type === 'timer' && drill.duration ? `⏱️ ${drill.duration}s` : 
+                       drill.type === 'stopwatch' ? '⏱️ Stopwatch' :
+                       drill.type === 'check' ? '✓ Checkbox' : '🔢 Rep Counter'}
                     </span>
-                    <span className="text-blue-400 font-semibold">
-                      💎 {drill.points_per_rep} pts/rep
-                    </span>
+                    {drill.type !== 'check' && drill.type !== 'stopwatch' && (
+                      <span className="text-blue-400 font-semibold">
+                        💎 {drill.points_per_rep} pts/rep
+                      </span>
+                    )}
                     {drill.points_for_completion > 0 && (
                       <span className="text-green-400 font-semibold">
                         🎁 +{drill.points_for_completion}
@@ -131,7 +135,7 @@ export default function DrillsList({ user, userProfile }) {
                     )}
                   </div>
 
-                  {completedToday && (
+                  {isCompletedToday && (
                     <div className="mt-3 text-xs text-gray-400">
                       ⏰ Available again tomorrow
                     </div>
