@@ -1,6 +1,6 @@
 // pages/_app.js
 import '../styles/globals.css';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import { supabase } from '../lib/supabaseClient';
@@ -11,6 +11,7 @@ function MyApp({ Component, pageProps }) {
   const [user, setUser] = useState(null);
   const [userProfile, setUserProfile] = useState(null);
   const [loading, setLoading] = useState(true);
+  const hasInitialized = useRef(false);
 
   useEffect(() => {
     // Get initial session
@@ -23,25 +24,33 @@ function MyApp({ Component, pageProps }) {
       }
     });
 
-    // Listen for auth changes - ONLY sign in/out, ignore everything else
+    // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       console.log('Auth event:', event);
       
-      // Only handle explicit sign in and sign out
       if (event === 'SIGNED_OUT') {
         setUser(null);
         setUserProfile(null);
         setLoading(false);
+        hasInitialized.current = false;
         
         if (router.pathname !== '/' && router.pathname !== '/about' && router.pathname !== '/coach-signup') {
           router.push('/');
         }
       } else if (event === 'SIGNED_IN' && session?.user) {
-        setUser(session.user);
-        setLoading(true);
-        await fetchUserProfile(session.user.id);
+        // Only process SIGNED_IN if we haven't already initialized
+        // This prevents duplicate SIGNED_IN events from tab switching
+        if (!hasInitialized.current) {
+          setUser(session.user);
+          setLoading(true);
+          await fetchUserProfile(session.user.id);
+          hasInitialized.current = true;
+        } else {
+          // Just update user, don't show loading or redirect
+          setUser(session.user);
+        }
       }
-      // Ignore TOKEN_REFRESHED and all other events - do nothing
+      // Ignore all other events (TOKEN_REFRESHED, etc.)
     });
 
     return () => subscription.unsubscribe();
