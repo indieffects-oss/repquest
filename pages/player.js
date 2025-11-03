@@ -154,64 +154,99 @@ export default function PlayerDrill({ user, userProfile }) {
     setCompleted(false);
   };
 
-  const handleSubmit = async () => {
-    const repsCount = parseInt(reps) || 0;
-    
-    if (repsCount < 0) {
-      alert('Reps must be a positive number');
-      return;
+  // UPDATED handleSubmit function for pages/player.js
+// Replace the existing handleSubmit function (around line 157) with this:
+
+const handleSubmit = async () => {
+  const repsCount = parseInt(reps) || 0;
+  
+  if (repsCount < 0) {
+    alert('Reps must be a positive number');
+    return;
+  }
+
+  setSubmitting(true);
+
+  try {
+    const repPoints = repsCount * (drill.points_per_rep || 0);
+    const bonusPoints = drill.points_for_completion || 0;
+    const totalPoints = repPoints + bonusPoints;
+
+    //Check if daily limit and already completed today
+    if (drill.daily_limit) {
+      const today = new Date().toISOString().split('T')[0];
+      const { data: todayCompletion } = await supabase
+        .from('drill_completions_daily')
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('drill_id', drill.id)
+        .eq('completed_date', today)
+        .maybeSingle();
+
+      if (todayCompletion) {
+        alert('⏰ You already completed this drill today! Points were not awarded. Come back tomorrow!');
+        router.push('/drills');
+        return;
+      }
     }
 
-    setSubmitting(true);
+    // Insert drill result
+    const { error: resultError } = await supabase
+      .from('drill_results')
+      .insert({
+        user_id: user.id,
+        drill_id: drill.id,
+        drill_name: drill.name,
+        reps: repsCount,
+        points: totalPoints,
+        timestamp: new Date().toISOString()
+      });
 
-    try {
-      const repPoints = repsCount * (drill.points_per_rep || 0);
-      const bonusPoints = drill.points_for_completion || 0;
-      const totalPoints = repPoints + bonusPoints;
+    if (resultError) throw resultError;
 
-      // Insert drill result
-      const { error: resultError } = await supabase
-        .from('drill_results')
+    // Record daily completion if daily limit is enabled
+    if (drill.daily_limit) {
+      const today = new Date().toISOString().split('T')[0];
+      await supabase
+        .from('drill_completions_daily')
         .insert({
           user_id: user.id,
           drill_id: drill.id,
-          drill_name: drill.name,
-          reps: repsCount,
-          points: totalPoints,
-          timestamp: new Date().toISOString()
+          team_id: userProfile?.selected_team_id || null,
+          completed_date: today
         });
-
-      if (resultError) throw resultError;
-
-      // Update user's total points
-      const { error: updateError } = await supabase.rpc('increment_user_points', {
-        user_id: user.id,
-        points_to_add: totalPoints
-      });
-
-      // If RPC doesn't exist, fall back to manual update
-      if (updateError) {
-        const { data: userData } = await supabase
-          .from('users')
-          .select('total_points')
-          .eq('id', user.id)
-          .single();
-
-        await supabase
-          .from('users')
-          .update({ total_points: (userData.total_points || 0) + totalPoints })
-          .eq('id', user.id);
-      }
-
-      alert(`Great job! You earned ${totalPoints} points! 🎉`);
-      router.push('/drills');
-    } catch (err) {
-      console.error('Error submitting result:', err);
-      alert('Failed to save result');
-    } finally {
-      setSubmitting(false);
     }
-  };
+
+    // Update user's total points
+    const { error: updateError } = await supabase.rpc('increment_user_points', {
+      user_id: user.id,
+      points_to_add: totalPoints
+    });
+
+    // If RPC doesn't exist, fall back to manual update
+    if (updateError) {
+      const { data: userData } = await supabase
+        .from('users')
+        .select('total_points')
+        .eq('id', user.id)
+        .single();
+
+      await supabase
+        .from('users')
+        .update({ total_points: (userData.total_points || 0) + totalPoints })
+        .eq('id', user.id);
+    }
+
+    alert(`Great job! You earned ${totalPoints} points! 🎉`);
+    router.push('/drills');
+  } catch (err) {
+    console.error('Error submitting result:', err);
+    alert('Failed to save result');
+  } finally {
+    setSubmitting(false);
+  }
+};
+
 
   if (loading) {
     return <div className="p-6 text-white">Loading drill...</div>;

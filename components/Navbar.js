@@ -72,16 +72,28 @@ export default function Navbar({ user, userProfile }) {
                 </Link>
               </>
             ) : (
-              <Link
-                href="/drills"
-                className={`px-4 py-2 rounded-lg transition ${
-                  isActive('/drills')
-                    ? 'bg-white/20 text-white backdrop-blur-sm'
-                    : 'text-white/90 hover:bg-white/10'
-                }`}
-              >
-                Drills
-              </Link>
+              <>
+                <Link
+                  href="/drills"
+                  className={`px-4 py-2 rounded-lg transition ${
+                    isActive('/drills')
+                      ? 'bg-white/20 text-white backdrop-blur-sm'
+                      : 'text-white/90 hover:bg-white/10'
+                  }`}
+                >
+                  Drills
+                </Link>
+                <Link
+                  href="/my-results"
+                  className={`px-4 py-2 rounded-lg transition ${
+                    isActive('/my-results')
+                      ? 'bg-white/20 text-white backdrop-blur-sm'
+                      : 'text-white/90 hover:bg-white/10'
+                  }`}
+                >
+                  My Results
+                </Link>
+              </>
             )}
             
             <Link
@@ -192,17 +204,30 @@ export default function Navbar({ user, userProfile }) {
                 </Link>
               </>
             ) : (
-              <Link
-                href="/drills"
-                onClick={() => setMobileMenuOpen(false)}
-                className={`block px-4 py-3 rounded-lg transition ${
-                  isActive('/drills')
-                    ? 'bg-white/20 text-white backdrop-blur-sm'
-                    : 'text-white/90 hover:bg-white/10'
-                }`}
-              >
-                Drills
-              </Link>
+              <>
+                <Link
+                  href="/drills"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className={`block px-4 py-3 rounded-lg transition ${
+                    isActive('/drills')
+                      ? 'bg-white/20 text-white backdrop-blur-sm'
+                      : 'text-white/90 hover:bg-white/10'
+                  }`}
+                >
+                  Drills
+                </Link>
+                <Link
+                  href="/my-results"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className={`block px-4 py-3 rounded-lg transition ${
+                    isActive('/my-results')
+                      ? 'bg-white/20 text-white backdrop-blur-sm'
+                      : 'text-white/90 hover:bg-white/10'
+                  }`}
+                >
+                  My Results
+                </Link>
+              </>
             )}
             
             <Link
