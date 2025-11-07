@@ -1,0 +1,100 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --color-primary: #3B82F6;
+  --color-secondary: #1E40AF;
+}
+
+html,
+body,
+#__next {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  @apply bg-gray-900 text-white font-sans antialiased;
+}
+
+/* Custom scrollbar for dark theme */
+::-webkit-scrollbar {
+  width: 10px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-gray-900;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-gray-700 rounded-full;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-gray-600;
+}
+
+/* Smooth transitions */
+* {
+  @apply transition-colors duration-200;
+}
+
+/* Remove number input arrows */
+input[type='number']::-webkit-inner-spin-button,
+input[type='number']::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+input[type='number'] {
+  -moz-appearance: textfield;
+}
+
+/* Themed buttons using CSS variables */
+.btn-primary {
+  background-color: var(--color-primary);
+}
+
+.btn-primary:hover {
+  filter: brightness(1.1);
+}
+
+/* Apply team colors to specific button classes */
+button.bg-blue-600,
+a.bg-blue-600 {
+  background-color: var(--color-primary) !important;
+}
+
+button.bg-blue-600:hover,
+a.bg-blue-600:hover {
+  background-color: var(--color-primary) !important;
+  filter: brightness(1.1);
+}
+
+button.bg-blue-700,
+a.bg-blue-700 {
+  background-color: var(--color-secondary) !important;
+}
+
+/* Team color accents */
+.text-blue-400 {
+  color: var(--color-primary) !important;
+}
+
+.border-blue-500 {
+  border-color: var(--color-primary) !important;
+}
+
+.bg-blue-900 {
+  background-color: var(--color-secondary) !important;
+  opacity: 0.2;
+}
+
+/* Focus states with team colors */
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: var(--color-primary) !important;
+}
