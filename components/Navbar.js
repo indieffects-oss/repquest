@@ -1,12 +1,60 @@
-// components/Navbar.js
+// components/Navbar.js - v0.43 with team switcher
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { supabase } from '../lib/supabaseClient';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 export default function Navbar({ user, userProfile }) {
   const router = useRouter();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [myTeams, setMyTeams] = useState([]);
+  const [switchingTeam, setSwitchingTeam] = useState(false);
+
+  useEffect(() => {
+    if (userProfile?.role === 'player' && user) {
+      fetchMyTeams();
+    }
+  }, [userProfile, user]);
+
+  const fetchMyTeams = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('team_members')
+        .select(`
+          team_id,
+          teams (id, name, sport)
+        `)
+        .eq('user_id', user.id);
+
+      if (error) throw error;
+      
+      const teams = data.map(tm => tm.teams).filter(Boolean);
+      setMyTeams(teams);
+    } catch (err) {
+      console.error('Error fetching teams:', err);
+    }
+  };
+
+  const handleTeamSwitch = async (teamId) => {
+    if (teamId === userProfile.active_team_id) return;
+    
+    setSwitchingTeam(true);
+    try {
+      const { error } = await supabase
+        .from('users')
+        .update({ active_team_id: teamId })
+        .eq('id', user.id);
+
+      if (error) throw error;
+
+      // Reload the page to refresh all data
+      window.location.reload();
+    } catch (err) {
+      console.error('Error switching team:', err);
+      alert('Failed to switch team');
+      setSwitchingTeam(false);
+    }
+  };
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -18,6 +66,8 @@ export default function Navbar({ user, userProfile }) {
   // Get CSS variables for team colors
   const primaryColor = getComputedStyle(document.documentElement).getPropertyValue('--color-primary').trim() || '#3B82F6';
   const secondaryColor = getComputedStyle(document.documentElement).getPropertyValue('--color-secondary').trim() || '#1E40AF';
+
+  const activeTeam = myTeams.find(t => t.id === userProfile?.active_team_id);
 
   return (
     <nav 
@@ -130,8 +180,42 @@ export default function Navbar({ user, userProfile }) {
             </Link>
           </div>
 
-          {/* User Info & Logout - Desktop */}
+          {/* User Info, Team Switcher & Logout - Desktop */}
           <div className="hidden md:flex items-center gap-4">
+            {/* Team Switcher for Players */}
+            {userProfile?.role === 'player' && myTeams.length > 1 && (
+              <div className="relative group">
+                <button
+                  disabled={switchingTeam}
+                  className="px-3 py-2 bg-white/20 hover:bg-white/30 backdrop-blur-sm text-white rounded-lg transition text-sm font-semibold flex items-center gap-2"
+                >
+                  🏆 {activeTeam?.name || 'Select Team'}
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+                
+                {/* Dropdown */}
+                <div className="absolute right-0 mt-2 w-48 bg-gray-800 border border-gray-700 rounded-lg shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50">
+                  {myTeams.map(team => (
+                    <button
+                      key={team.id}
+                      onClick={() => handleTeamSwitch(team.id)}
+                      disabled={switchingTeam}
+                      className={`w-full text-left px-4 py-2 hover:bg-gray-700 transition ${
+                        team.id === userProfile.active_team_id 
+                          ? 'bg-blue-900/30 text-blue-400' 
+                          : 'text-white'
+                      } first:rounded-t-lg last:rounded-b-lg`}
+                    >
+                      {team.id === userProfile.active_team_id && '✓ '}
+                      {team.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <div className="text-right">
               <div className="text-white font-semibold text-sm drop-shadow">
                 {userProfile?.display_name || 'User'}
@@ -167,6 +251,30 @@ export default function Navbar({ user, userProfile }) {
         {/* Mobile Menu */}
         {mobileMenuOpen && (
           <div className="md:hidden pb-4 space-y-2">
+            {/* Mobile Team Switcher */}
+            {userProfile?.role === 'player' && myTeams.length > 1 && (
+              <div className="px-4 py-3 bg-white/10 backdrop-blur-sm rounded-lg mb-2">
+                <p className="text-white/80 text-xs mb-2">Switch Team:</p>
+                <div className="space-y-1">
+                  {myTeams.map(team => (
+                    <button
+                      key={team.id}
+                      onClick={() => handleTeamSwitch(team.id)}
+                      disabled={switchingTeam}
+                      className={`w-full text-left px-3 py-2 rounded transition ${
+                        team.id === userProfile.active_team_id 
+                          ? 'bg-blue-600 text-white' 
+                          : 'bg-white/10 text-white hover:bg-white/20'
+                      }`}
+                    >
+                      {team.id === userProfile.active_team_id && '✓ '}
+                      {team.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {userProfile?.role === 'coach' ? (
               <>
                 <Link
@@ -274,6 +382,11 @@ export default function Navbar({ user, userProfile }) {
               <div className="text-white/90 text-sm">
                 {userProfile?.total_points || 0} points
               </div>
+              {activeTeam && (
+                <div className="text-white/80 text-xs mt-1">
+                  Team: {activeTeam.name}
+                </div>
+              )}
             </div>
 
             <button

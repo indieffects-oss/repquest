@@ -1,4 +1,4 @@
-// pages/profile.js
+// pages/profile.js - v0.43 with team selector
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import { supabase } from '../lib/supabaseClient';
@@ -8,11 +8,13 @@ export default function Profile({ user, userProfile }) {
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [myTeams, setMyTeams] = useState([]);
+  const [loadingTeams, setLoadingTeams] = useState(true);
   const [profile, setProfile] = useState({
     display_name: '',
     jersey_number: '',
     position: '',
-    team_name: '',
+    active_team_id: '',
     profile_picture_url: ''
   });
 
@@ -22,17 +24,48 @@ export default function Profile({ user, userProfile }) {
         display_name: userProfile.display_name || '',
         jersey_number: userProfile.jersey_number || '',
         position: userProfile.position || '',
-        team_name: userProfile.team_name || '',
+        active_team_id: userProfile.active_team_id || '',
         profile_picture_url: userProfile.profile_picture_url || ''
       });
+      
+      // Fetch player's teams if they're a player
+      if (userProfile.role === 'player') {
+        fetchMyTeams();
+      }
     }
   }, [userProfile]);
+
+  const fetchMyTeams = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('team_members')
+        .select(`
+          team_id,
+          teams (id, name, sport, coach_id)
+        `)
+        .eq('user_id', user.id);
+
+      if (error) throw error;
+      
+      // Extract teams from the nested structure
+      const teams = data.map(tm => tm.teams).filter(Boolean);
+      setMyTeams(teams);
+      
+      // If player has no active team but is on teams, set first team as active
+      if (!profile.active_team_id && teams.length > 0) {
+        setProfile(prev => ({ ...prev, active_team_id: teams[0].id }));
+      }
+    } catch (err) {
+      console.error('Error fetching teams:', err);
+    } finally {
+      setLoadingTeams(false);
+    }
+  };
 
   const handleProfilePictureUpload = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Validate file
     if (!file.type.startsWith('image/')) {
       alert('Please upload an image file');
       return;
@@ -46,11 +79,9 @@ export default function Profile({ user, userProfile }) {
     setUploading(true);
 
     try {
-      // Create unique filename
       const fileExt = file.name.split('.').pop();
       const fileName = `${user.id}-${Date.now()}.${fileExt}`;
 
-      // Delete old picture if exists
       if (profile.profile_picture_url) {
         const oldFileName = profile.profile_picture_url.split('/').pop();
         await supabase.storage
@@ -58,7 +89,6 @@ export default function Profile({ user, userProfile }) {
           .remove([oldFileName]);
       }
 
-      // Upload to Supabase Storage
       const { data: uploadData, error: uploadError } = await supabase.storage
         .from('profile-pictures')
         .upload(fileName, file, {
@@ -68,12 +98,10 @@ export default function Profile({ user, userProfile }) {
 
       if (uploadError) throw uploadError;
 
-      // Get public URL
       const { data: { publicUrl } } = supabase.storage
         .from('profile-pictures')
         .getPublicUrl(fileName);
 
-      // Update user profile
       const { error: updateError } = await supabase
         .from('users')
         .update({ profile_picture_url: publicUrl })
@@ -95,7 +123,6 @@ export default function Profile({ user, userProfile }) {
     if (!confirm('Remove profile picture?')) return;
 
     try {
-      // Remove from storage
       if (profile.profile_picture_url) {
         const fileName = profile.profile_picture_url.split('/').pop();
         await supabase.storage
@@ -103,7 +130,6 @@ export default function Profile({ user, userProfile }) {
           .remove([fileName]);
       }
 
-      // Update user profile
       const { error } = await supabase
         .from('users')
         .update({ profile_picture_url: null })
@@ -125,18 +151,30 @@ export default function Profile({ user, userProfile }) {
       return;
     }
 
+    // For players, require active team selection if they're on any teams
+    if (userProfile.role === 'player' && myTeams.length > 0 && !profile.active_team_id) {
+      alert('Please select an active team');
+      return;
+    }
+
     setSaving(true);
     setSuccess(false);
 
     try {
+      const updateData = {
+        display_name: profile.display_name.trim(),
+        jersey_number: profile.jersey_number.trim(),
+        position: profile.position.trim()
+      };
+
+      // Only update active_team_id for players
+      if (userProfile.role === 'player' && profile.active_team_id) {
+        updateData.active_team_id = profile.active_team_id;
+      }
+
       const { error } = await supabase
         .from('users')
-        .update({
-          display_name: profile.display_name.trim(),
-          jersey_number: profile.jersey_number.trim(),
-          position: profile.position.trim(),
-          team_name: profile.team_name.trim()
-        })
+        .update(updateData)
         .eq('id', user.id);
 
       if (error) throw error;
@@ -234,6 +272,38 @@ export default function Profile({ user, userProfile }) {
 
             {userProfile.role === 'player' && (
               <>
+                {/* Active Team Selector */}
+                {!loadingTeams && myTeams.length > 0 && (
+                  <div>
+                    <label className="block text-gray-300 text-sm mb-2">
+                      Active Team <span className="text-red-400">*</span>
+                    </label>
+                    <select
+                      value={profile.active_team_id}
+                      onChange={(e) => setProfile({ ...profile, active_team_id: e.target.value })}
+                      className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:border-blue-500"
+                    >
+                      <option value="">Select a team...</option>
+                      {myTeams.map(team => (
+                        <option key={team.id} value={team.id}>
+                          {team.name} {team.sport && `(${team.sport})`}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="text-xs text-gray-500 mt-1">
+                      This determines which team's drills and leaderboard you see
+                    </p>
+                  </div>
+                )}
+
+                {!loadingTeams && myTeams.length === 0 && (
+                  <div className="bg-yellow-900/30 border border-yellow-700 rounded-lg p-4">
+                    <p className="text-yellow-200 text-sm">
+                      📧 You're not on any teams yet. Ask your coach to send you a team invite!
+                    </p>
+                  </div>
+                )}
+
                 <div>
                   <label className="block text-gray-300 text-sm mb-2">
                     Jersey # (optional)
@@ -261,17 +331,6 @@ export default function Profile({ user, userProfile }) {
                 </div>
               </>
             )}
-
-            <div>
-              <label className="block text-gray-300 text-sm mb-2">Team Name (optional)</label>
-              <input
-                type="text"
-                value={profile.team_name}
-                onChange={(e) => setProfile({ ...profile, team_name: e.target.value })}
-                placeholder="Eagles"
-                className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
-              />
-            </div>
 
             {success && (
               <div className="bg-green-900/50 border border-green-700 text-green-200 px-4 py-3 rounded-lg text-sm">
@@ -301,6 +360,12 @@ export default function Profile({ user, userProfile }) {
               <span className="text-gray-400">Total Points</span>
               <span className="text-blue-400 font-semibold">{userProfile.total_points || 0}</span>
             </div>
+            {userProfile.role === 'player' && myTeams.length > 0 && (
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-400">Teams</span>
+                <span className="text-white">{myTeams.length}</span>
+              </div>
+            )}
           </div>
         </div>
       </div>

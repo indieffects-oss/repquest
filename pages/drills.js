@@ -1,4 +1,4 @@
-// pages/drills.js - v0.41 with daily limits and inactive filtering
+// pages/drills.js - v0.43 with team-specific drills
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import { supabase } from '../lib/supabaseClient';
@@ -8,19 +8,48 @@ export default function DrillsList({ user, userProfile }) {
   const [drills, setDrills] = useState([]);
   const [completedToday, setCompletedToday] = useState(new Set());
   const [loading, setLoading] = useState(true);
+  const [teamName, setTeamName] = useState('');
 
   useEffect(() => {
-    if (!user) return;
+    if (!user || !userProfile) return;
     fetchDrills();
     fetchTodayCompletions();
-  }, [user]);
+  }, [user, userProfile]);
 
   const fetchDrills = async () => {
     try {
-      const { data, error} = await supabase
+      const activeTeamId = userProfile.active_team_id;
+      
+      if (!activeTeamId) {
+        // Player has no active team
+        setDrills([]);
+        setLoading(false);
+        return;
+      }
+
+      // Get team info including coach_id
+      const { data: teamData, error: teamError } = await supabase
+        .from('teams')
+        .select('name, coach_id')
+        .eq('id', activeTeamId)
+        .single();
+
+      if (teamError) throw teamError;
+      
+      if (!teamData) {
+        setDrills([]);
+        setLoading(false);
+        return;
+      }
+
+      setTeamName(teamData.name);
+
+      // Fetch drills created by this team's coach
+      const { data, error } = await supabase
         .from('drills')
         .select('*')
-        .eq('is_active', true) // Only show active drills
+        .eq('created_by', teamData.coach_id)
+        .eq('is_active', true)
         .order('sort_order', { ascending: true })
         .order('created_at', { ascending: false });
 
@@ -53,7 +82,6 @@ export default function DrillsList({ user, userProfile }) {
   };
 
   const startDrill = (drill) => {
-    // Check if daily limit and already completed today
     if (drill.daily_limit && completedToday.has(drill.id)) {
       alert('⏰ You\'ve already completed this drill today! Come back tomorrow for more points.');
       return;
@@ -66,11 +94,35 @@ export default function DrillsList({ user, userProfile }) {
     return <div className="p-6 text-white">Loading drills...</div>;
   }
 
+  if (!userProfile?.active_team_id) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-gray-900 p-4 sm:p-6">
+        <div className="max-w-4xl mx-auto">
+          <div className="bg-gray-800 rounded-xl p-12 border border-gray-700 text-center">
+            <div className="text-6xl mb-4">🏃</div>
+            <p className="text-white text-lg mb-2">No Active Team</p>
+            <p className="text-gray-400 text-sm mb-4">
+              You need to join a team to access drills
+            </p>
+            <button
+              onClick={() => router.push('/profile')}
+              className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg"
+            >
+              Go to Profile
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-gray-900 p-4 sm:p-6">
       <div className="max-w-4xl mx-auto">
         <div className="mb-6">
-          <h1 className="text-2xl sm:text-3xl font-bold text-white mb-2">Available Drills</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold text-white mb-2">
+            {teamName ? `${teamName} Drills` : 'Available Drills'}
+          </h1>
           <p className="text-gray-400 text-sm sm:text-base">Select a drill to start training</p>
         </div>
 
@@ -79,7 +131,7 @@ export default function DrillsList({ user, userProfile }) {
             <div className="text-6xl mb-4">🏃</div>
             <p className="text-white text-lg mb-2">No drills available yet</p>
             <p className="text-gray-400 text-sm">
-              Ask your coach to create some training drills
+              Your coach hasn't created any drills for this team yet
             </p>
           </div>
         ) : (

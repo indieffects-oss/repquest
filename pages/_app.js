@@ -1,4 +1,4 @@
-// pages/_app.js
+// pages/_app.js - v0.43 with active team support
 import '../styles/globals.css';
 import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/router';
@@ -66,15 +66,12 @@ function MyApp({ Component, pageProps }) {
           router.push('/');
         }
       } else if (event === 'SIGNED_IN' && session?.user) {
-        // Only process SIGNED_IN if we don't have a profile yet
-        // If we have a profile, this is from tab switch
         if (hasUserProfile.current) {
           console.log('Already have profile, ignoring SIGNED_IN from tab switch');
           setUser(session.user);
           return;
         }
         
-        // This is a real sign-in - we don't have profile yet
         if (isFetching.current) {
           console.log('Already fetching, ignoring duplicate SIGNED_IN');
           return;
@@ -88,7 +85,6 @@ function MyApp({ Component, pageProps }) {
         hasUserProfile.current = true;
         isFetching.current = false;
       }
-      // Ignore INITIAL_SESSION and TOKEN_REFRESHED completely
     });
 
     return () => {
@@ -109,11 +105,11 @@ function MyApp({ Component, pageProps }) {
 
       setUserProfile(data);
       
-      // Fetch team colors based on role
+      // Fetch team colors based on role and active team
       if (data.role === 'coach') {
         await fetchCoachTeamColors(userId);
-      } else if (data.role === 'player') {
-        await fetchPlayerTeamColors(userId);
+      } else if (data.role === 'player' && data.active_team_id) {
+        await fetchPlayerTeamColors(data.active_team_id);
       }
       
       setLoading(false);
@@ -156,18 +152,17 @@ function MyApp({ Component, pageProps }) {
     }
   };
 
-  const fetchPlayerTeamColors = async (userId) => {
+  const fetchPlayerTeamColors = async (activeTeamId) => {
     try {
       const { data } = await supabase
-        .from('team_members')
-        .select('team_id, teams(primary_color, secondary_color)')
-        .eq('user_id', userId)
-        .limit(1)
-        .maybeSingle();
+        .from('teams')
+        .select('primary_color, secondary_color')
+        .eq('id', activeTeamId)
+        .single();
 
-      if (data && data.teams) {
-        const primary = data.teams.primary_color || '#3B82F6';
-        const secondary = data.teams.secondary_color || '#1E40AF';
+      if (data) {
+        const primary = data.primary_color || '#3B82F6';
+        const secondary = data.secondary_color || '#1E40AF';
         setTeamColors({ primary, secondary });
         applyTeamColors(primary, secondary);
       } else {

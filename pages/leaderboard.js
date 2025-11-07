@@ -1,21 +1,61 @@
-// pages/leaderboard.js
+// pages/leaderboard.js - v0.43 with team filtering
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
 
 export default function Leaderboard({ user, userProfile }) {
   const [players, setPlayers] = useState([]);
+  const [teamName, setTeamName] = useState('');
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!user) return;
+    if (!user || !userProfile) return;
     fetchLeaderboard();
-  }, [user]);
+  }, [user, userProfile]);
 
   const fetchLeaderboard = async () => {
     try {
+      // Get the user's active team
+      const activeTeamId = userProfile.active_team_id;
+      
+      if (!activeTeamId) {
+        // Player has no active team
+        setPlayers([]);
+        setLoading(false);
+        return;
+      }
+
+      // Fetch team info
+      const { data: teamData } = await supabase
+        .from('teams')
+        .select('name')
+        .eq('id', activeTeamId)
+        .single();
+      
+      if (teamData) {
+        setTeamName(teamData.name);
+      }
+
+      // Fetch all players on this team
+      const { data: teamMembersData, error: membersError } = await supabase
+        .from('team_members')
+        .select('user_id')
+        .eq('team_id', activeTeamId);
+
+      if (membersError) throw membersError;
+
+      const userIds = teamMembersData.map(tm => tm.user_id);
+
+      if (userIds.length === 0) {
+        setPlayers([]);
+        setLoading(false);
+        return;
+      }
+
+      // Fetch user profiles for team members
       const { data, error } = await supabase
         .from('users')
-        .select('id, display_name, email, jersey_number, position, team_name, total_points, profile_picture_url')
+        .select('id, display_name, email, jersey_number, position, total_points, profile_picture_url')
+        .in('id', userIds)
         .not('display_name', 'is', null)
         .order('total_points', { ascending: false });
 
@@ -32,12 +72,36 @@ export default function Leaderboard({ user, userProfile }) {
     return <div className="p-6 text-white">Loading leaderboard...</div>;
   }
 
+  if (!userProfile?.active_team_id) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-gray-900 p-6">
+        <div className="max-w-4xl mx-auto">
+          <div className="bg-gray-800 rounded-xl p-12 border border-gray-700 text-center">
+            <div className="text-6xl mb-4">🏆</div>
+            <p className="text-white text-lg mb-2">No Active Team</p>
+            <p className="text-gray-400 text-sm mb-4">
+              You need to join a team to view the leaderboard
+            </p>
+            <button
+              onClick={() => window.location.href = '/profile'}
+              className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg"
+            >
+              Go to Profile
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-gray-900 p-6">
       <div className="max-w-4xl mx-auto">
         <div className="mb-6">
-          <h1 className="text-3xl font-bold text-white mb-2">Leaderboard</h1>
-          <p className="text-gray-400">Top performers across all drills</p>
+          <h1 className="text-3xl font-bold text-white mb-2">
+            {teamName ? `${teamName} Leaderboard` : 'Team Leaderboard'}
+          </h1>
+          <p className="text-gray-400">Top performers on your team</p>
         </div>
 
         {players.length === 0 ? (
@@ -56,7 +120,6 @@ export default function Leaderboard({ user, userProfile }) {
                   <th className="px-3 sm:px-6 py-4 text-left text-gray-300 font-semibold text-sm">Rank</th>
                   <th className="px-3 sm:px-6 py-4 text-left text-gray-300 font-semibold text-sm">Player</th>
                   <th className="px-3 sm:px-6 py-4 text-left text-gray-300 font-semibold text-sm hidden sm:table-cell">Jersey</th>
-                  <th className="px-3 sm:px-6 py-4 text-left text-gray-300 font-semibold text-sm hidden md:table-cell">Team</th>
                   <th className="px-3 sm:px-6 py-4 text-right text-gray-300 font-semibold text-sm">Points</th>
                 </tr>
               </thead>
@@ -111,9 +174,6 @@ export default function Leaderboard({ user, userProfile }) {
                       <td className="px-3 sm:px-6 py-4 text-gray-300 hidden sm:table-cell text-sm sm:text-base">
                         {player.jersey_number || '-'}
                       </td>
-                      <td className="px-3 sm:px-6 py-4 text-gray-300 hidden md:table-cell text-sm sm:text-base">
-                        {player.team_name || '-'}
-                      </td>
                       <td className="px-3 sm:px-6 py-4 text-right">
                         <span className="text-blue-400 font-bold text-base sm:text-lg">
                           {(player.total_points || 0).toLocaleString()}
@@ -132,7 +192,7 @@ export default function Leaderboard({ user, userProfile }) {
             <h3 className="text-white font-semibold mb-4">Your Stats</h3>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
               <div className="text-center">
-                <div className="text-gray-400 text-sm mb-1">Rank</div>
+                <div className="text-gray-400 text-sm mb-1">Team Rank</div>
                 <div className="text-2xl font-bold text-white">
                   #{players.findIndex(p => p.id === user.id) + 1}
                 </div>
