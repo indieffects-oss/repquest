@@ -1,4 +1,4 @@
-// components/Navbar.js - v0.43 with team switcher
+// components/Navbar.js - v0.44 with fixed logout redirect
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { supabase } from '../lib/supabaseClient';
@@ -57,8 +57,15 @@ export default function Navbar({ user, userProfile }) {
   };
 
   const handleLogout = async () => {
-    await supabase.auth.signOut();
-    router.push('/');
+    try {
+      await supabase.auth.signOut();
+      // Force redirect to home page
+      window.location.href = '/';
+    } catch (err) {
+      console.error('Logout error:', err);
+      // Still redirect even if there's an error
+      window.location.href = '/';
+    }
   };
 
   const isActive = (path) => router.pathname === path;

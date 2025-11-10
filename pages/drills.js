@@ -16,51 +16,61 @@ export default function DrillsList({ user, userProfile }) {
     fetchTodayCompletions();
   }, [user, userProfile]);
 
-  const fetchDrills = async () => {
-    try {
-      const activeTeamId = userProfile.active_team_id;
-      
-      if (!activeTeamId) {
-        // Player has no active team
-        setDrills([]);
-        setLoading(false);
-        return;
-      }
-
-      // Get team info including coach_id
-      const { data: teamData, error: teamError } = await supabase
-        .from('teams')
-        .select('name, coach_id')
-        .eq('id', activeTeamId)
-        .single();
-
-      if (teamError) throw teamError;
-      
-      if (!teamData) {
-        setDrills([]);
-        setLoading(false);
-        return;
-      }
-
-      setTeamName(teamData.name);
-
-      // Fetch drills created by this team's coach
-      const { data, error } = await supabase
-        .from('drills')
-        .select('*')
-        .eq('created_by', teamData.coach_id)
-        .eq('is_active', true)
-        .order('sort_order', { ascending: true })
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-      setDrills(data || []);
-    } catch (err) {
-      console.error('Error fetching drills:', err);
-    } finally {
+ const fetchDrills = async () => {
+  try {
+    const activeTeamId = userProfile.active_team_id;
+    console.log('1. Player active_team_id:', activeTeamId);
+    
+    if (!activeTeamId) {
+      setDrills([]);
       setLoading(false);
+      return;
     }
-  };
+
+    // Get team info including coach_id
+    const { data: teamData, error: teamError } = await supabase
+      .from('teams')
+      .select('name, coach_id')
+      .eq('id', activeTeamId)
+      .single();
+
+    console.log('2. Team data:', teamData);
+    console.log('2. Team error:', teamError);
+
+    if (teamError) throw teamError;
+    
+    if (!teamData) {
+      setDrills([]);
+      setLoading(false);
+      return;
+    }
+
+    setTeamName(teamData.name);
+
+    console.log('3. Fetching drills for coach_id:', teamData.coach_id);
+
+    // Fetch drills created by this team's coach
+    const { data, error } = await supabase
+      .from('drills')
+      .select('*')
+      .eq('created_by', teamData.coach_id)
+      .eq('is_active', true)
+      .order('sort_order', { ascending: true })
+      .order('created_at', { ascending: false });
+
+    console.log('4. Drills found:', data?.length || 0);
+    console.log('4. All drill data:', JSON.stringify(data, null, 2));
+    console.log('4. Drill names:', data?.map(d => d.name));
+    console.log('4. Fetch error:', error);
+
+    if (error) throw error;
+    setDrills(data || []);
+  } catch (err) {
+    console.error('Error fetching drills:', err);
+  } finally {
+    setLoading(false);
+  }
+};
 
   const fetchTodayCompletions = async () => {
     try {
@@ -80,6 +90,9 @@ export default function DrillsList({ user, userProfile }) {
       console.error('Error fetching today completions:', err);
     }
   };
+
+  console.log('5. Drills state:', drills);
+  console.log('6. Loading state:', loading);
 
   const startDrill = (drill) => {
     if (drill.daily_limit && completedToday.has(drill.id)) {
