@@ -19,6 +19,7 @@ export default function Teams({ user, userProfile }) {
   const [selectedTeam, setSelectedTeam] = useState(null);
   const [generatedLink, setGeneratedLink] = useState('');
   const [uploadingLogo, setUploadingLogo] = useState(false);
+  const [editingTeamName, setEditingTeamName] = useState(null);
 
   const sports = [
     'Basketball', 'Soccer', 'Baseball', 'Football', 'Volleyball',
@@ -207,6 +208,30 @@ export default function Teams({ user, userProfile }) {
       alert('Failed to update colors');
     }
   };
+
+  const updateTeamName = async (teamId) => {
+  const team = teams.find(t => t.id === teamId);
+  if (!team || !team.name.trim()) {
+    alert('Team name is required');
+    return;
+  }
+
+  try {
+    const { error } = await supabase
+      .from('teams')
+      .update({ name: team.name.trim() })
+      .eq('id', teamId);
+
+    if (error) throw error;
+
+    alert('Team name updated!');
+    setEditingTeamName(null);
+    fetchTeams();
+  } catch (err) {
+    console.error('Error updating team name:', err);
+    alert('Failed to update team name');
+  }
+};
 
   const addPlayerToTeam = async (teamId) => {
     const email = inviteEmail.trim().toLowerCase();
@@ -417,11 +442,12 @@ export default function Teams({ user, userProfile }) {
                 }}
               >
                 {/* Team Header with Logo */}
+                {/* Team Header with Logo */}
                 <div className="flex items-start gap-4 mb-4">
                   {team.logo_url ? (
                     <div className="relative group">
-                      <img 
-                        src={team.logo_url} 
+                      <img
+                        src={team.logo_url}
                         alt={team.name}
                         className="w-16 h-16 rounded-lg object-cover"
                       />
@@ -446,13 +472,53 @@ export default function Teams({ user, userProfile }) {
                   )}
 
                   <div className="flex-1">
-                    <h3 className="text-xl font-bold text-white">{team.name}</h3>
+                    {editingTeamName === team.id ? (
+                      <div className="flex items-center gap-2 mb-1">
+                        <input
+                          type="text"
+                          value={team.name}
+                          onChange={(e) => {
+                            const updated = teams.map(t =>
+                              t.id === team.id ? { ...t, name: e.target.value } : t
+                            );
+                            setTeams(updated);
+                          }}
+                          className="flex-1 px-3 py-2 bg-gray-700 border border-gray-600 rounded text-white text-lg font-bold focus:outline-none focus:border-blue-500"
+                        />
+                        <button
+                          onClick={() => updateTeamName(team.id)}
+                          className="bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded text-sm"
+                        >
+                          Save
+                        </button>
+                        <button
+                          onClick={() => {
+                            setEditingTeamName(null);
+                            fetchTeams();
+                          }}
+                          className="bg-gray-600 hover:bg-gray-500 text-white px-3 py-1 rounded text-sm"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2 mb-1">
+                        <h3 className="text-xl font-bold text-white">{team.name}</h3>
+                        <button
+                          onClick={() => setEditingTeamName(team.id)}
+                          className="text-blue-400 hover:text-blue-300 text-sm"
+                          title="Edit team name"
+                        >
+                          ✏️
+                        </button>
+                      </div>
+                    )}
                     {team.sport && (
                       <p className="text-gray-400 text-sm">{team.sport}</p>
                     )}
                   </div>
 
-                  <span 
+                  <span
                     className="px-3 py-1 rounded-full text-sm font-semibold"
                     style={{
                       backgroundColor: team.primary_color + '20',

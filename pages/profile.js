@@ -1,7 +1,8 @@
-// pages/profile.js - v0.43 with team selector
+// pages/profile.js - v0.44 with level and badges
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import { supabase } from '../lib/supabaseClient';
+import { calculateLevel, getLevelTier, getPointsToNextLevel } from '../lib/gamification';
 
 export default function Profile({ user, userProfile }) {
   const router = useRouter();
@@ -10,6 +11,8 @@ export default function Profile({ user, userProfile }) {
   const [success, setSuccess] = useState(false);
   const [myTeams, setMyTeams] = useState([]);
   const [loadingTeams, setLoadingTeams] = useState(true);
+  const [myBadges, setMyBadges] = useState([]);
+  const [stats, setStats] = useState(null);
   const [profile, setProfile] = useState({
     display_name: '',
     jersey_number: '',
@@ -27,10 +30,11 @@ export default function Profile({ user, userProfile }) {
         active_team_id: userProfile.active_team_id || '',
         profile_picture_url: userProfile.profile_picture_url || ''
       });
-      
-      // Fetch player's teams if they're a player
+
       if (userProfile.role === 'player') {
         fetchMyTeams();
+        fetchMyBadges();
+        fetchMyStats();
       }
     }
   }, [userProfile]);
@@ -46,12 +50,10 @@ export default function Profile({ user, userProfile }) {
         .eq('user_id', user.id);
 
       if (error) throw error;
-      
-      // Extract teams from the nested structure
+
       const teams = data.map(tm => tm.teams).filter(Boolean);
       setMyTeams(teams);
-      
-      // If player has no active team but is on teams, set first team as active
+
       if (!profile.active_team_id && teams.length > 0) {
         setProfile(prev => ({ ...prev, active_team_id: teams[0].id }));
       }
@@ -59,6 +61,39 @@ export default function Profile({ user, userProfile }) {
       console.error('Error fetching teams:', err);
     } finally {
       setLoadingTeams(false);
+    }
+  };
+
+  const fetchMyBadges = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('user_badges')
+        .select(`
+          earned_at,
+          badges (id, name, description, icon)
+        `)
+        .eq('user_id', user.id)
+        .order('earned_at', { ascending: false });
+
+      if (error) throw error;
+      setMyBadges(data?.map(ub => ub.badges) || []);
+    } catch (err) {
+      console.error('Error fetching badges:', err);
+    }
+  };
+
+  const fetchMyStats = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('user_stats')
+        .select('*')
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+      if (error) throw error;
+      setStats(data);
+    } catch (err) {
+      console.error('Error fetching stats:', err);
     }
   };
 
@@ -151,7 +186,6 @@ export default function Profile({ user, userProfile }) {
       return;
     }
 
-    // For players, require active team selection if they're on any teams
     if (userProfile.role === 'player' && myTeams.length > 0 && !profile.active_team_id) {
       alert('Please select an active team');
       return;
@@ -167,7 +201,6 @@ export default function Profile({ user, userProfile }) {
         position: profile.position.trim()
       };
 
-      // Only update active_team_id for players
       if (userProfile.role === 'player' && profile.active_team_id) {
         updateData.active_team_id = profile.active_team_id;
       }
@@ -180,8 +213,7 @@ export default function Profile({ user, userProfile }) {
       if (error) throw error;
 
       setSuccess(true);
-      
-      // If this was first-time setup, redirect to appropriate page
+
       if (!userProfile?.display_name) {
         setTimeout(() => {
           if (userProfile?.role === 'coach') {
@@ -203,14 +235,94 @@ export default function Profile({ user, userProfile }) {
     return <div className="p-6 text-white">Loading...</div>;
   }
 
+  const level = calculateLevel(userProfile.total_points || 0);
+  const tier = getLevelTier(level);
+  const pointsToNext = getPointsToNextLevel(userProfile.total_points || 0);
+  const progressPercent = ((userProfile.total_points % 1000) / 1000) * 100;
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-gray-900 p-4 sm:p-6">
-      <div className="max-w-2xl mx-auto">
+      <div className="max-w-4xl mx-auto">
         <div className="mb-6">
           <h1 className="text-2xl sm:text-3xl font-bold text-white mb-2">Profile Settings</h1>
           <p className="text-gray-400 text-sm sm:text-base">Update your information</p>
         </div>
 
+        {/* Player Stats Card */}
+        {userProfile.role === 'player' && (
+          <div className="bg-gray-800 rounded-xl p-6 border border-gray-700 mb-6">
+            <h3 className="text-white font-semibold mb-4">Your Progress</h3>
+
+            {/* Level Display */}
+            <div className="flex items-center gap-4 mb-6">
+              <div className="text-center">
+                <div className="text-6xl mb-2">{tier.emoji}</div>
+                <div className="text-2xl font-bold text-white">Level {level}</div>
+                <div className="text-sm" style={{ color: tier.color }}>{tier.name}</div>
+              </div>
+
+              <div className="flex-1">
+                <div className="flex justify-between text-sm text-gray-400 mb-2">
+                  <span>{userProfile.total_points?.toLocaleString() || 0} pts</span>
+                  <span>{pointsToNext} to next level</span>
+                </div>
+                <div className="w-full bg-gray-700 rounded-full h-4 overflow-hidden">
+                  <div
+                    className="h-full bg-gradient-to-r from-blue-500 to-purple-500 transition-all duration-500"
+                    style={{ width: `${progressPercent}%` }}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Stats Grid */}
+            {stats && (
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                <div className="bg-gray-700/50 rounded-lg p-3 text-center">
+                  <div className="text-2xl mb-1">🔥</div>
+                  <div className="text-xl font-bold text-white">{stats.current_streak || 0}</div>
+                  <div className="text-xs text-gray-400">Day Streak</div>
+                </div>
+                <div className="bg-gray-700/50 rounded-lg p-3 text-center">
+                  <div className="text-2xl mb-1">💪</div>
+                  <div className="text-xl font-bold text-white">{stats.total_reps?.toLocaleString() || 0}</div>
+                  <div className="text-xs text-gray-400">Total Reps</div>
+                </div>
+                <div className="bg-gray-700/50 rounded-lg p-3 text-center">
+                  <div className="text-2xl mb-1">✅</div>
+                  <div className="text-xl font-bold text-white">{stats.sessions_completed || 0}</div>
+                  <div className="text-xs text-gray-400">Sessions</div>
+                </div>
+                <div className="bg-gray-700/50 rounded-lg p-3 text-center">
+                  <div className="text-2xl mb-1">🏆</div>
+                  <div className="text-xl font-bold text-white">{myBadges.length}</div>
+                  <div className="text-xs text-gray-400">Badges</div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Badges Showcase */}
+        {userProfile.role === 'player' && myBadges.length > 0 && (
+          <div className="bg-gray-800 rounded-xl p-6 border border-gray-700 mb-6">
+            <h3 className="text-white font-semibold mb-4">🏆 Badge Collection ({myBadges.length})</h3>
+            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-4">
+              {myBadges.map(badge => (
+                <div
+                  key={badge.id}
+                  className="bg-gray-700/50 rounded-lg p-3 text-center hover:bg-gray-700 transition group cursor-help"
+                  title={badge.description}
+                >
+                  <div className="text-4xl mb-1">{badge.icon}</div>
+                  <div className="text-xs text-white font-semibold truncate">{badge.name}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Profile Form */}
         <div className="bg-gray-800 rounded-xl p-6 border border-gray-700">
           {/* Profile Picture Section */}
           <div className="mb-6 pb-6 border-b border-gray-700">
@@ -218,7 +330,7 @@ export default function Profile({ user, userProfile }) {
             <div className="flex items-center gap-6">
               {profile.profile_picture_url ? (
                 <div className="relative group">
-                  <img 
+                  <img
                     src={profile.profile_picture_url}
                     alt="Profile"
                     className="w-24 h-24 rounded-full object-cover border-4 border-gray-700"
@@ -272,7 +384,6 @@ export default function Profile({ user, userProfile }) {
 
             {userProfile.role === 'player' && (
               <>
-                {/* Active Team Selector */}
                 {!loadingTeams && myTeams.length > 0 && (
                   <div>
                     <label className="block text-gray-300 text-sm mb-2">
@@ -355,10 +466,6 @@ export default function Profile({ user, userProfile }) {
             <div className="flex justify-between text-sm">
               <span className="text-gray-400">Role</span>
               <span className="text-white capitalize">{userProfile.role}</span>
-            </div>
-            <div className="flex justify-between text-sm">
-              <span className="text-gray-400">Total Points</span>
-              <span className="text-blue-400 font-semibold">{userProfile.total_points || 0}</span>
             </div>
             {userProfile.role === 'player' && myTeams.length > 0 && (
               <div className="flex justify-between text-sm">

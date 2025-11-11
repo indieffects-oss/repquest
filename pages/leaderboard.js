@@ -1,45 +1,73 @@
-// pages/leaderboard.js - v0.43 with team filtering
+// pages/leaderboard.js - v0.44 Team-specific points
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
+import { calculateLevel, getLevelTier } from '../lib/gamification';
 
 export default function Leaderboard({ user, userProfile }) {
   const [players, setPlayers] = useState([]);
   const [teamName, setTeamName] = useState('');
   const [loading, setLoading] = useState(true);
+  const [teams, setTeams] = useState([]);
+  const [selectedTeam, setSelectedTeam] = useState(null);
 
   useEffect(() => {
     if (!user || !userProfile) return;
-    fetchLeaderboard();
+
+    if (userProfile.role === 'coach') {
+      fetchCoachTeams();
+    } else {
+      fetchLeaderboard(userProfile.active_team_id);
+    }
   }, [user, userProfile]);
 
-  const fetchLeaderboard = async () => {
+  const fetchCoachTeams = async () => {
     try {
-      // Get the user's active team
-      const activeTeamId = userProfile.active_team_id;
-      
-      if (!activeTeamId) {
-        // Player has no active team
-        setPlayers([]);
-        setLoading(false);
-        return;
-      }
+      const { data, error } = await supabase
+        .from('teams')
+        .select('id, name, sport')
+        .eq('coach_id', user.id)
+        .order('name');
 
-      // Fetch team info
+      if (error) throw error;
+
+      setTeams(data || []);
+
+      if (data && data.length > 0) {
+        setSelectedTeam(data[0].id);
+        fetchLeaderboard(data[0].id);
+      } else {
+        setLoading(false);
+      }
+    } catch (err) {
+      console.error('Error fetching teams:', err);
+      setLoading(false);
+    }
+  };
+
+  const fetchLeaderboard = async (teamId) => {
+    if (!teamId) {
+      setPlayers([]);
+      setLoading(false);
+      return;
+    }
+
+    try {
+      // Get team info
       const { data: teamData } = await supabase
         .from('teams')
         .select('name')
-        .eq('id', activeTeamId)
+        .eq('id', teamId)
         .single();
-      
+
       if (teamData) {
         setTeamName(teamData.name);
       }
 
-      // Fetch all players on this team
+      // Get all players on this team
       const { data: teamMembersData, error: membersError } = await supabase
         .from('team_members')
         .select('user_id')
-        .eq('team_id', activeTeamId);
+        .eq('team_id', teamId);
 
       if (membersError) throw membersError;
 
@@ -51,16 +79,39 @@ export default function Leaderboard({ user, userProfile }) {
         return;
       }
 
-      // Fetch user profiles for team members
-      const { data, error } = await supabase
+      // Get user profiles
+      const { data: usersData, error: usersError } = await supabase
         .from('users')
-        .select('id, display_name, email, jersey_number, position, total_points, profile_picture_url')
-        .in('id', userIds)
-        .not('display_name', 'is', null)
-        .order('total_points', { ascending: false });
+        .select('id, display_name, email, jersey_number, position, profile_picture_url')
+        .in('id', userIds);
 
-      if (error) throw error;
-      setPlayers(data || []);
+      if (usersError) throw usersError;
+
+      // Calculate team-specific points from drill_results
+      const { data: resultsData, error: resultsError } = await supabase
+        .from('drill_results')
+        .select('user_id, points')
+        .eq('team_id', teamId)
+        .in('user_id', userIds);
+
+      if (resultsError) throw resultsError;
+
+      // Sum points per user for THIS team only
+      const pointsByUser = {};
+      resultsData?.forEach(result => {
+        if (!pointsByUser[result.user_id]) {
+          pointsByUser[result.user_id] = 0;
+        }
+        pointsByUser[result.user_id] += result.points || 0;
+      });
+
+      // Add team points to user data
+      const playersWithPoints = usersData.map(user => ({
+        ...user,
+        team_points: pointsByUser[user.id] || 0
+      })).sort((a, b) => b.team_points - a.team_points);
+
+      setPlayers(playersWithPoints);
     } catch (err) {
       console.error('Error fetching leaderboard:', err);
     } finally {
@@ -69,10 +120,11 @@ export default function Leaderboard({ user, userProfile }) {
   };
 
   if (loading) {
-    return <div className="p-6 text-white">Loading leaderboard...</div>;
+    return <div className="min-h-screen bg-gray-900 flex items-center justify-center text-white">Loading leaderboard...</div>;
   }
 
-  if (!userProfile?.active_team_id) {
+  // No team check
+  if (userProfile?.role === 'player' && !userProfile?.active_team_id) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-gray-900 p-6">
         <div className="max-w-4xl mx-auto">
@@ -94,6 +146,28 @@ export default function Leaderboard({ user, userProfile }) {
     );
   }
 
+  if (userProfile?.role === 'coach' && teams.length === 0) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-gray-900 p-6">
+        <div className="max-w-4xl mx-auto">
+          <div className="bg-gray-800 rounded-xl p-12 border border-gray-700 text-center">
+            <div className="text-6xl mb-4">🏆</div>
+            <p className="text-white text-lg mb-2">No Teams Yet</p>
+            <p className="text-gray-400 text-sm mb-4">
+              Create a team to see the leaderboard
+            </p>
+            <button
+              onClick={() => window.location.href = '/teams'}
+              className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg"
+            >
+              Go to Teams
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-gray-900 p-6">
       <div className="max-w-4xl mx-auto">
@@ -103,6 +177,28 @@ export default function Leaderboard({ user, userProfile }) {
           </h1>
           <p className="text-gray-400">Top performers on your team</p>
         </div>
+
+        {/* Team Selector for Coaches */}
+        {userProfile?.role === 'coach' && teams.length > 1 && (
+          <div className="bg-gray-800 rounded-xl p-4 mb-6 border border-gray-700">
+            <label className="block text-gray-300 text-sm mb-2">Select Team:</label>
+            <select
+              value={selectedTeam}
+              onChange={(e) => {
+                setSelectedTeam(e.target.value);
+                setLoading(true);
+                fetchLeaderboard(e.target.value);
+              }}
+              className="w-full sm:w-64 px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:border-blue-500"
+            >
+              {teams.map(team => (
+                <option key={team.id} value={team.id}>
+                  {team.name} {team.sport && `(${team.sport})`}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
 
         {players.length === 0 ? (
           <div className="bg-gray-800 rounded-xl p-12 border border-gray-700 text-center">
@@ -119,7 +215,7 @@ export default function Leaderboard({ user, userProfile }) {
                 <tr>
                   <th className="px-3 sm:px-6 py-4 text-left text-gray-300 font-semibold text-sm">Rank</th>
                   <th className="px-3 sm:px-6 py-4 text-left text-gray-300 font-semibold text-sm">Player</th>
-                  <th className="px-3 sm:px-6 py-4 text-left text-gray-300 font-semibold text-sm hidden sm:table-cell">Jersey</th>
+                  <th className="px-3 sm:px-6 py-4 text-left text-gray-300 font-semibold text-sm hidden sm:table-cell">Level</th>
                   <th className="px-3 sm:px-6 py-4 text-right text-gray-300 font-semibold text-sm">Points</th>
                 </tr>
               </thead>
@@ -127,13 +223,14 @@ export default function Leaderboard({ user, userProfile }) {
                 {players.map((player, index) => {
                   const isCurrentUser = user && player.id === user.id;
                   const rankEmoji = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : null;
+                  const level = calculateLevel(player.team_points || 0);
+                  const tier = getLevelTier(level);
 
                   return (
                     <tr
                       key={player.id}
-                      className={`border-b border-gray-700 ${
-                        isCurrentUser ? 'bg-blue-900/30' : index % 2 === 0 ? 'bg-gray-800' : 'bg-gray-750'
-                      }`}
+                      className={`border-b border-gray-700 ${isCurrentUser ? 'bg-blue-900/30' : index % 2 === 0 ? 'bg-gray-800' : 'bg-gray-750'
+                        }`}
                     >
                       <td className="px-3 sm:px-6 py-4">
                         <div className="flex items-center gap-2">
@@ -146,7 +243,7 @@ export default function Leaderboard({ user, userProfile }) {
                       <td className="px-3 sm:px-6 py-4">
                         <div className="flex items-center gap-3">
                           {player.profile_picture_url ? (
-                            <img 
+                            <img
                               src={player.profile_picture_url}
                               alt={player.display_name}
                               className="w-10 h-10 rounded-full object-cover border-2 border-gray-600"
@@ -164,19 +261,25 @@ export default function Leaderboard({ user, userProfile }) {
                             {player.position && (
                               <div className="text-gray-400 text-xs sm:text-sm">{player.position}</div>
                             )}
-                            {/* Show jersey on mobile under name */}
-                            <div className="text-gray-400 text-xs sm:hidden mt-1">
-                              #{player.jersey_number || '-'}
+                            {/* Show level on mobile */}
+                            <div className="sm:hidden text-xs mt-1">
+                              <span style={{ color: tier.color }}>{tier.emoji} Lvl {level}</span>
                             </div>
                           </div>
                         </div>
                       </td>
-                      <td className="px-3 sm:px-6 py-4 text-gray-300 hidden sm:table-cell text-sm sm:text-base">
-                        {player.jersey_number || '-'}
+                      <td className="px-3 sm:px-6 py-4 hidden sm:table-cell">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xl">{tier.emoji}</span>
+                          <div>
+                            <div className="text-white font-semibold">Level {level}</div>
+                            <div className="text-xs" style={{ color: tier.color }}>{tier.name}</div>
+                          </div>
+                        </div>
                       </td>
                       <td className="px-3 sm:px-6 py-4 text-right">
                         <span className="text-blue-400 font-bold text-base sm:text-lg">
-                          {(player.total_points || 0).toLocaleString()}
+                          {(player.team_points || 0).toLocaleString()}
                         </span>
                       </td>
                     </tr>
@@ -187,7 +290,8 @@ export default function Leaderboard({ user, userProfile }) {
           </div>
         )}
 
-        {userProfile && players.length > 0 && (
+        {/* Your Stats - Only for players */}
+        {userProfile?.role === 'player' && players.length > 0 && (
           <div className="mt-6 bg-gray-800 rounded-xl p-6 border border-gray-700">
             <h3 className="text-white font-semibold mb-4">Your Stats</h3>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
@@ -198,16 +302,16 @@ export default function Leaderboard({ user, userProfile }) {
                 </div>
               </div>
               <div className="text-center">
-                <div className="text-gray-400 text-sm mb-1">Total Points</div>
+                <div className="text-gray-400 text-sm mb-1">Team Points</div>
                 <div className="text-2xl font-bold text-blue-400">
-                  {userProfile.total_points || 0}
+                  {(players.find(p => p.id === user.id)?.team_points || 0).toLocaleString()}
                 </div>
               </div>
               <div className="text-center col-span-2 sm:col-span-1">
-                <div className="text-gray-400 text-sm mb-1">Points Behind Leader</div>
+                <div className="text-gray-400 text-sm mb-1">Behind Leader</div>
                 <div className="text-2xl font-bold text-white">
-                  {players.length > 0 && players[0].id !== user.id 
-                    ? (players[0].total_points - (userProfile.total_points || 0))
+                  {players.length > 0 && players[0].id !== user.id
+                    ? (players[0].team_points - (players.find(p => p.id === user.id)?.team_points || 0)).toLocaleString()
                     : 0
                   }
                 </div>

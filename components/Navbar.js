@@ -108,6 +108,15 @@ export default function Navbar({ user, userProfile }) {
                   Drills
                 </Link>
                 <Link
+                  href="/analytics"
+                  className={`px-4 py-2 rounded-lg transition ${isActive('/analytics')
+                      ? 'bg-white/20 text-white backdrop-blur-sm'
+                      : 'text-white/90 hover:bg-white/10'
+                    }`}
+                >
+                  Analytics
+                </Link>
+                <Link
                   href="/scores"
                   className={`px-4 py-2 rounded-lg transition ${
                     isActive('/scores')

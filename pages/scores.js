@@ -1,4 +1,4 @@
-// pages/scores.js
+// pages/scores.js - Team-specific score management
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import { supabase } from '../lib/supabaseClient';
@@ -11,49 +11,93 @@ export default function ScoreManagement({ user, userProfile }) {
   const [editReps, setEditReps] = useState('');
   const [filterPlayer, setFilterPlayer] = useState('all');
   const [players, setPlayers] = useState([]);
+  const [teams, setTeams] = useState([]);
+  const [selectedTeam, setSelectedTeam] = useState('all');
 
   useEffect(() => {
     if (userProfile?.role !== 'coach') {
       router.push('/drills');
       return;
     }
-    fetchScores();
-    fetchPlayers();
+    fetchTeamsAndPlayers();
   }, [userProfile]);
 
-  const fetchPlayers = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('users')
-        .select('id, display_name, email')
-        .eq('role', 'player')
-        .order('display_name');
+  useEffect(() => {
+    if (teams.length > 0 || selectedTeam !== 'all') {
+      fetchScores();
+    }
+  }, [selectedTeam, filterPlayer, teams]);
 
-      if (error) throw error;
-      setPlayers(data || []);
+  const fetchTeamsAndPlayers = async () => {
+    try {
+      // Get coach's teams
+      const { data: teamsData, error: teamsError } = await supabase
+        .from('teams')
+        .select('id, name')
+        .eq('coach_id', user.id)
+        .order('name');
+
+      if (teamsError) throw teamsError;
+      setTeams(teamsData || []);
+
+      if (!teamsData || teamsData.length === 0) {
+        setLoading(false);
+        return;
+      }
+
+      // Get all players from coach's teams
+      const teamIds = teamsData.map(t => t.id);
+      const { data: membersData, error: membersError } = await supabase
+        .from('team_members')
+        .select('user_id, users(id, display_name, email)')
+        .in('team_id', teamIds);
+
+      if (membersError) throw membersError;
+
+      const uniquePlayers = [];
+      const seenIds = new Set();
+
+      membersData?.forEach(member => {
+        if (member.users && !seenIds.has(member.users.id)) {
+          seenIds.add(member.users.id);
+          uniquePlayers.push(member.users);
+        }
+      });
+
+      setPlayers(uniquePlayers);
     } catch (err) {
-      console.error('Error fetching players:', err);
+      console.error('Error fetching teams/players:', err);
+    } finally {
+      setLoading(false);
     }
   };
 
   const fetchScores = async () => {
     try {
+      if (teams.length === 0) {
+        setScores([]);
+        return;
+      }
+
+      // Get team IDs to filter by
+      const teamIds = selectedTeam === 'all'
+        ? teams.map(t => t.id)
+        : [selectedTeam];
+
       const { data, error } = await supabase
         .from('drill_results')
         .select(`
           *,
-          users (display_name, email),
-          drills (name)
+          users (display_name, email)
         `)
+        .in('team_id', teamIds)
         .order('timestamp', { ascending: false })
-        .limit(100);
+        .limit(200);
 
       if (error) throw error;
       setScores(data || []);
     } catch (err) {
       console.error('Error fetching scores:', err);
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -69,10 +113,9 @@ export default function ScoreManagement({ user, userProfile }) {
     }
 
     const newReps = parseInt(editReps);
-    const drill = scores.find(s => s.id === score.id);
-    
+
     try {
-      // Recalculate points based on new reps
+      // Get drill info
       const { data: drillData } = await supabase
         .from('drills')
         .select('points_per_rep, points_for_completion')
@@ -148,12 +191,32 @@ export default function ScoreManagement({ user, userProfile }) {
     }
   };
 
-  const filteredScores = filterPlayer === 'all' 
-    ? scores 
+  const filteredScores = filterPlayer === 'all'
+    ? scores
     : scores.filter(s => s.user_id === filterPlayer);
 
   if (loading) {
-    return <div className="p-6 text-white">Loading...</div>;
+    return <div className="min-h-screen bg-gray-900 flex items-center justify-center text-white">Loading...</div>;
+  }
+
+  if (teams.length === 0) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-gray-900 p-6">
+        <div className="max-w-4xl mx-auto">
+          <div className="bg-gray-800 rounded-xl p-12 border border-gray-700 text-center">
+            <div className="text-6xl mb-4">📊</div>
+            <p className="text-white text-lg mb-2">No Teams Yet</p>
+            <p className="text-gray-400 text-sm mb-4">Create a team to see player scores</p>
+            <button
+              onClick={() => router.push('/teams')}
+              className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg"
+            >
+              Go to Teams
+            </button>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -161,24 +224,44 @@ export default function ScoreManagement({ user, userProfile }) {
       <div className="max-w-7xl mx-auto">
         <div className="mb-6">
           <h1 className="text-2xl sm:text-3xl font-bold text-white mb-2">Score Management</h1>
-          <p className="text-gray-400 text-sm sm:text-base">Edit or remove player scores</p>
+          <p className="text-gray-400 text-sm sm:text-base">Edit or remove player scores from your teams</p>
         </div>
 
-        {/* Filter */}
+        {/* Filters */}
         <div className="bg-gray-800 rounded-xl p-4 mb-6 border border-gray-700">
-          <label className="block text-gray-300 text-sm mb-2">Filter by Player:</label>
-          <select
-            value={filterPlayer}
-            onChange={(e) => setFilterPlayer(e.target.value)}
-            className="w-full sm:w-64 px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:border-blue-500"
-          >
-            <option value="all">All Players</option>
-            {players.map(player => (
-              <option key={player.id} value={player.id}>
-                {player.display_name || player.email}
-              </option>
-            ))}
-          </select>
+          <div className="grid sm:grid-cols-2 gap-4">
+            {teams.length > 0 && (
+              <div>
+                <label className="block text-gray-300 text-sm mb-2">Filter by Team:</label>
+                <select
+                  value={selectedTeam}
+                  onChange={(e) => setSelectedTeam(e.target.value)}
+                  className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:border-blue-500"
+                >
+                  <option value="all">All Teams</option>
+                  {teams.map(team => (
+                    <option key={team.id} value={team.id}>{team.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            <div>
+              <label className="block text-gray-300 text-sm mb-2">Filter by Player:</label>
+              <select
+                value={filterPlayer}
+                onChange={(e) => setFilterPlayer(e.target.value)}
+                className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:border-blue-500"
+              >
+                <option value="all">All Players ({players.length})</option>
+                {players.map(player => (
+                  <option key={player.id} value={player.id}>
+                    {player.display_name || player.email}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
         </div>
 
         {/* Scores List */}
@@ -186,7 +269,7 @@ export default function ScoreManagement({ user, userProfile }) {
           <div className="bg-gray-800 rounded-xl p-12 border border-gray-700 text-center">
             <div className="text-6xl mb-4">📊</div>
             <p className="text-white text-lg mb-2">No scores yet</p>
-            <p className="text-gray-400 text-sm">Scores will appear here as players complete drills</p>
+            <p className="text-gray-400 text-sm">Scores will appear here as your players complete drills</p>
           </div>
         ) : (
           <div className="bg-gray-800 rounded-xl border border-gray-700 overflow-x-auto">
@@ -208,7 +291,7 @@ export default function ScoreManagement({ user, userProfile }) {
                     className={`border-b border-gray-700 ${index % 2 === 0 ? 'bg-gray-800' : 'bg-gray-750'}`}
                   >
                     <td className="px-3 sm:px-6 py-4 text-gray-300 text-xs sm:text-sm">
-                      {new Date(score.timestamp).toLocaleDateString()}
+                      {new Date(score.timestamp).toLocaleDateString()} {new Date(score.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </td>
                     <td className="px-3 sm:px-6 py-4 text-white text-xs sm:text-sm">
                       {score.users?.display_name || 'Unknown'}
@@ -230,7 +313,7 @@ export default function ScoreManagement({ user, userProfile }) {
                       )}
                     </td>
                     <td className="px-3 sm:px-6 py-4 text-blue-400 font-semibold text-xs sm:text-sm">
-                      {score.points}
+                      {score.points.toLocaleString()}
                     </td>
                     <td className="px-3 sm:px-6 py-4 text-right">
                       {editingScore === score.id ? (
@@ -271,6 +354,10 @@ export default function ScoreManagement({ user, userProfile }) {
             </table>
           </div>
         )}
+
+        <div className="mt-4 text-gray-400 text-sm text-center">
+          Showing {filteredScores.length} score{filteredScores.length !== 1 ? 's' : ''}
+        </div>
       </div>
     </div>
   );
