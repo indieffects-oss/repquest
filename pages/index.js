@@ -1,4 +1,4 @@
-// pages/index.js
+// pages/index.js - Updated with Terms & Privacy
 import { useState } from 'react';
 import { useRouter } from 'next/router';
 import { supabase } from '../lib/supabaseClient';
@@ -11,7 +11,9 @@ export default function Login() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [accountType, setAccountType] = useState('player'); // 'player' or 'coach'
+  const [accountType, setAccountType] = useState('player');
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
+  const [acceptedPrivacy, setAcceptedPrivacy] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -28,14 +30,16 @@ export default function Login() {
 
         if (error) throw error;
 
-        // Create user profile with selected role
+        // Create user profile with selected role and policy acceptance
         const { error: profileError } = await supabase
           .from('users')
           .insert({
             id: data.user.id,
             email: email,
-            role: accountType, // Use the selected account type
-            total_points: 0
+            role: accountType,
+            total_points: 0,
+            terms_accepted_at: new Date().toISOString(),
+            privacy_accepted_at: new Date().toISOString()
           });
 
         if (profileError) throw profileError;
@@ -49,8 +53,6 @@ export default function Login() {
         });
 
         if (error) throw error;
-        
-        // Redirect happens in _app.js
       }
     } catch (err) {
       console.error('Auth error:', err);
@@ -64,9 +66,9 @@ export default function Login() {
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-gray-900 flex items-center justify-center p-4">
       <div className="bg-gray-800 rounded-2xl shadow-2xl p-8 w-full max-w-md border border-gray-700">
         <div className="text-center mb-8">
-          <img 
-            src="/images/RepQuestAlpha.png" 
-            alt="RepQuest" 
+          <img
+            src="/images/RepQuestAlpha.png"
+            alt="RepQuest"
             className="w-24 h-24 mx-auto mb-4"
           />
           <h1 className="text-3xl font-bold text-white mb-2">
@@ -88,29 +90,27 @@ export default function Login() {
                 <button
                   type="button"
                   onClick={() => setAccountType('player')}
-                  className={`py-3 px-4 rounded-lg font-semibold transition ${
-                    accountType === 'player'
+                  className={`py-3 px-4 rounded-lg font-semibold transition ${accountType === 'player'
                       ? 'bg-blue-600 text-white border-2 border-blue-500'
                       : 'bg-gray-700 text-gray-300 border-2 border-gray-600 hover:border-gray-500'
-                  }`}
+                    }`}
                 >
                   🏃 Player
                 </button>
                 <button
                   type="button"
                   onClick={() => setAccountType('coach')}
-                  className={`py-3 px-4 rounded-lg font-semibold transition ${
-                    accountType === 'coach'
+                  className={`py-3 px-4 rounded-lg font-semibold transition ${accountType === 'coach'
                       ? 'bg-blue-600 text-white border-2 border-blue-500'
                       : 'bg-gray-700 text-gray-300 border-2 border-gray-600 hover:border-gray-500'
-                  }`}
+                    }`}
                 >
                   👨‍🏫 Coach
                 </button>
               </div>
               <p className="text-xs text-gray-500 mt-2 text-center">
-                {accountType === 'coach' 
-                  ? 'Coaches can create drills and manage teams' 
+                {accountType === 'coach'
+                  ? 'Coaches can create drills and manage teams'
                   : 'Players can complete drills and compete'}
               </p>
             </div>
@@ -148,6 +148,53 @@ export default function Login() {
             )}
           </div>
 
+          {/* Terms and Privacy - Only show during signup */}
+          {isSignUp && (
+            <div className="space-y-3 pt-2">
+              <label className="flex items-start gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={acceptedTerms}
+                  onChange={(e) => setAcceptedTerms(e.target.checked)}
+                  className="mt-1 w-4 h-4 cursor-pointer"
+                  required
+                />
+                <span className="text-sm text-gray-300">
+                  I agree to the{' '}
+                  <a
+                    href="/terms"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-blue-400 hover:text-blue-300 underline"
+                  >
+                    Terms of Service
+                  </a>
+                </span>
+              </label>
+
+              <label className="flex items-start gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={acceptedPrivacy}
+                  onChange={(e) => setAcceptedPrivacy(e.target.checked)}
+                  className="mt-1 w-4 h-4 cursor-pointer"
+                  required
+                />
+                <span className="text-sm text-gray-300">
+                  I agree to the{' '}
+                  <a
+                    href="/privacy"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-blue-400 hover:text-blue-300 underline"
+                  >
+                    Privacy Policy
+                  </a>
+                </span>
+              </label>
+            </div>
+          )}
+
           {error && (
             <div className="bg-red-900/50 border border-red-700 text-red-200 px-4 py-3 rounded-lg text-sm">
               {error}
@@ -156,7 +203,7 @@ export default function Login() {
 
           <button
             type="submit"
-            disabled={loading || !email || !password}
+            disabled={loading || !email || !password || (isSignUp && (!acceptedTerms || !acceptedPrivacy))}
             className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-semibold py-3 rounded-lg transition"
           >
             {loading ? 'Please wait...' : isSignUp ? 'Create Account' : 'Sign In'}
@@ -168,7 +215,9 @@ export default function Login() {
               onClick={() => {
                 setIsSignUp(!isSignUp);
                 setError('');
-                setAccountType('player'); // Reset to player when toggling
+                setAccountType('player');
+                setAcceptedTerms(false);
+                setAcceptedPrivacy(false);
               }}
               className="text-blue-400 hover:text-blue-300 text-sm"
             >
@@ -179,7 +228,7 @@ export default function Login() {
 
         {/* About Link */}
         <div className="mt-6 pt-6 border-t border-gray-700 text-center">
-          <Link 
+          <Link
             href="/about"
             className="text-gray-400 hover:text-gray-300 text-sm"
           >
