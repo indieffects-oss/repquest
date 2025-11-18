@@ -1,18 +1,25 @@
-// pages/profile.js - v0.44 with level and badges
+// pages/profile.js - v0.5 Trophy Case with image compression
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import { supabase } from '../lib/supabaseClient';
-import { calculateLevel, getLevelTier, getPointsToNextLevel } from '../lib/gamification';
+import { calculateLevel, getLevelTier, getPointsToNextLevel, checkBadgeUnlocks } from '../lib/gamification';
+import { compressImage, formatFileSize } from '../lib/imageCompression';
+import ShareModal from '../components/ShareModal';
 
 export default function Profile({ user, userProfile }) {
   const router = useRouter();
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [uploadSize, setUploadSize] = useState(null);
   const [success, setSuccess] = useState(false);
   const [myTeams, setMyTeams] = useState([]);
   const [loadingTeams, setLoadingTeams] = useState(true);
   const [myBadges, setMyBadges] = useState([]);
   const [stats, setStats] = useState(null);
+  const [trophyData, setTrophyData] = useState(null);
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [shareData, setShareData] = useState(null);
+  const [teamColors, setTeamColors] = useState({ primary: '#3B82F6', secondary: '#1E40AF' });
   const [profile, setProfile] = useState({
     display_name: '',
     jersey_number: '',
@@ -35,6 +42,7 @@ export default function Profile({ user, userProfile }) {
         fetchMyTeams();
         fetchMyBadges();
         fetchMyStats();
+        fetchTrophyData();
       }
     }
   }, [userProfile]);
@@ -45,7 +53,7 @@ export default function Profile({ user, userProfile }) {
         .from('team_members')
         .select(`
           team_id,
-          teams (id, name, sport, coach_id)
+          teams (id, name, sport, coach_id, primary_color, secondary_color)
         `)
         .eq('user_id', user.id);
 
@@ -56,6 +64,17 @@ export default function Profile({ user, userProfile }) {
 
       if (!profile.active_team_id && teams.length > 0) {
         setProfile(prev => ({ ...prev, active_team_id: teams[0].id }));
+      }
+
+      // Set team colors from active team
+      if (userProfile.active_team_id) {
+        const activeTeam = teams.find(t => t.id === userProfile.active_team_id);
+        if (activeTeam) {
+          setTeamColors({
+            primary: activeTeam.primary_color || '#3B82F6',
+            secondary: activeTeam.secondary_color || '#1E40AF'
+          });
+        }
       }
     } catch (err) {
       console.error('Error fetching teams:', err);
@@ -92,8 +111,127 @@ export default function Profile({ user, userProfile }) {
 
       if (error) throw error;
       setStats(data);
+
+      // Check and award any eligible badges
+      if (data) {
+        console.log('🔍 Checking badges for user stats:', data);
+        try {
+          const newBadges = await checkBadgeUnlocks(supabase, user.id, data);
+
+          // If new badges were unlocked, refresh the badge list
+          if (newBadges && newBadges.length > 0) {
+            console.log('🎉 New badges unlocked:', newBadges.map(b => b.name).join(', '));
+            await fetchMyBadges();
+          } else {
+            console.log('✓ Badge check complete, no new badges');
+          }
+        } catch (badgeError) {
+          console.error('❌ Error checking badges:', badgeError);
+        }
+      }
     } catch (err) {
       console.error('Error fetching stats:', err);
+    }
+  };
+
+  const fetchTrophyData = async () => {
+    try {
+      // Fetch all drill results
+      const { data: allResults, error: resultsError } = await supabase
+        .from('drill_results')
+        .select('*')
+        .eq('user_id', user.id);
+
+      if (resultsError) {
+        console.error('Results error:', resultsError);
+        return;
+      }
+
+      // Fetch all team memberships
+      const { data: teamMemberships, error: teamsError } = await supabase
+        .from('team_members')
+        .select('team_id, teams(name, primary_color, secondary_color)')
+        .eq('user_id', user.id);
+
+      if (teamsError) {
+        console.error('Teams error:', teamsError);
+        return;
+      }
+
+      // Calculate statistics
+      const totalReps = allResults?.reduce((sum, r) => sum + (r.reps || 0), 0) || 0;
+      const totalPoints = userProfile.total_points || 0;
+      const totalDrills = allResults?.length || 0;
+
+      // Calculate longest streak
+      const sortedDates = [...new Set(allResults?.map(r => {
+        const date = new Date(r.completed_at);
+        date.setHours(0, 0, 0, 0);
+        return date.getTime();
+      }).sort((a, b) => b - a))] || [];
+
+      let longestStreak = 0;
+      let tempStreak = 1;
+      for (let i = 1; i < sortedDates.length; i++) {
+        const diff = (sortedDates[i - 1] - sortedDates[i]) / (24 * 60 * 60 * 1000);
+        if (diff === 1) {
+          tempStreak++;
+          longestStreak = Math.max(longestStreak, tempStreak);
+        } else {
+          tempStreak = 1;
+        }
+      }
+      longestStreak = Math.max(longestStreak, stats?.current_streak || 0);
+
+      // Calculate all tiers achieved
+      const currentLevel = calculateLevel(totalPoints);
+      const tiersAchieved = [];
+      for (let i = 1; i <= currentLevel; i++) {
+        const tierInfo = getLevelTier(i);
+        if (!tiersAchieved.find(t => t.name === tierInfo.name)) {
+          tiersAchieved.push({
+            level: i,
+            ...tierInfo
+          });
+        }
+      }
+
+      // Level and tier
+      const level = currentLevel;
+      const tier = getLevelTier(level);
+
+      // Team stats
+      const teamStats = teamMemberships?.map(tm => {
+        const teamResults = allResults?.filter(r => r.team_id === tm.team_id) || [];
+        const teamPoints = teamResults.reduce((sum, r) => sum + (r.points || 0), 0);
+        const teamReps = teamResults.reduce((sum, r) => sum + (r.reps || 0), 0);
+
+        return {
+          teamName: tm.teams.name,
+          teamColors: {
+            primary: tm.teams.primary_color || '#3B82F6',
+            secondary: tm.teams.secondary_color || '#1E40AF'
+          },
+          points: teamPoints,
+          reps: teamReps,
+          drills: teamResults.length
+        };
+      }) || [];
+
+      setTrophyData({
+        totalReps,
+        totalPoints,
+        totalDrills,
+        currentStreak: stats?.current_streak || 0,
+        longestStreak,
+        earnedBadges: myBadges, // Use the badges already fetched
+        level,
+        tier,
+        tiersAchieved,
+        teamStats
+      });
+    } catch (err) {
+      console.error('Error fetching trophy data:', err);
     }
   };
 
@@ -106,17 +244,22 @@ export default function Profile({ user, userProfile }) {
       return;
     }
 
-    if (file.size > 2 * 1024 * 1024) {
-      alert('Image must be less than 2MB');
-      return;
-    }
-
     setUploading(true);
+    setUploadSize(formatFileSize(file.size));
 
     try {
+      // Compress if over 2MB
+      let uploadFile = file;
+      if (file.size > 2 * 1024 * 1024) {
+        console.log('Compressing image...');
+        uploadFile = await compressImage(file, 2);
+        setUploadSize(`${formatFileSize(file.size)} → ${formatFileSize(uploadFile.size)}`);
+      }
+
       const fileExt = file.name.split('.').pop();
       const fileName = `${user.id}-${Date.now()}.${fileExt}`;
 
+      // Remove old picture
       if (profile.profile_picture_url) {
         const oldFileName = profile.profile_picture_url.split('/').pop();
         await supabase.storage
@@ -124,9 +267,10 @@ export default function Profile({ user, userProfile }) {
           .remove([oldFileName]);
       }
 
+      // Upload new picture
       const { data: uploadData, error: uploadError } = await supabase.storage
         .from('profile-pictures')
-        .upload(fileName, file, {
+        .upload(fileName, uploadFile, {
           cacheControl: '3600',
           upsert: true
         });
@@ -151,6 +295,7 @@ export default function Profile({ user, userProfile }) {
       alert('Failed to upload picture: ' + err.message);
     } finally {
       setUploading(false);
+      setUploadSize(null);
     }
   };
 
@@ -231,6 +376,30 @@ export default function Profile({ user, userProfile }) {
     }
   };
 
+  const handleShareTrophyCase = () => {
+    if (!trophyData) return;
+
+    const activeTeamData = myTeams.find(t => t.id === profile.active_team_id);
+
+    setShareData({
+      type: 'trophy_case',
+      userName: profile.display_name || 'Player',
+      profilePicture: profile.profile_picture_url,
+      level: trophyData.level,
+      tierName: trophyData.tier.name,
+      tierEmoji: trophyData.tier.emoji,
+      totalPoints: trophyData.totalPoints,
+      totalReps: trophyData.totalReps,
+      totalDrills: trophyData.totalDrills,
+      totalBadges: trophyData.earnedBadges.length,
+      currentStreak: trophyData.currentStreak,
+      longestStreak: trophyData.longestStreak,
+      badges: trophyData.earnedBadges.slice(0, 6),
+      shareText: `Check out my RepQuest Trophy Case! 🏆 Level ${trophyData.level} ${trophyData.tier.name} with ${trophyData.totalPoints.toLocaleString()} points!`
+    });
+    setShowShareModal(true);
+  };
+
   if (!user || !userProfile) {
     return <div className="p-6 text-white">Loading...</div>;
   }
@@ -248,10 +417,22 @@ export default function Profile({ user, userProfile }) {
           <p className="text-gray-400 text-sm sm:text-base">Update your information</p>
         </div>
 
-        {/* Player Stats Card */}
+        {/* Trophy Case - Replaces "Your Progress" */}
         {userProfile.role === 'player' && (
           <div className="bg-gray-800 rounded-xl p-6 border border-gray-700 mb-6">
-            <h3 className="text-white font-semibold mb-4">Your Progress</h3>
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-white font-semibold flex items-center gap-2">
+                🏆 Trophy Case
+              </h3>
+              {trophyData && (
+                <button
+                  onClick={handleShareTrophyCase}
+                  className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded-lg text-xs sm:text-sm flex items-center gap-1"
+                >
+                  📤 Share
+                </button>
+              )}
+            </div>
 
             {/* Level Display */}
             <div className="flex items-center gap-4 mb-6">
@@ -276,49 +457,97 @@ export default function Profile({ user, userProfile }) {
             </div>
 
             {/* Stats Grid */}
-            {stats && (
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                <div className="bg-gray-700/50 rounded-lg p-3 text-center">
-                  <div className="text-2xl mb-1">🔥</div>
-                  <div className="text-xl font-bold text-white">{stats.current_streak || 0}</div>
-                  <div className="text-xs text-gray-400">Day Streak</div>
-                </div>
-                <div className="bg-gray-700/50 rounded-lg p-3 text-center">
-                  <div className="text-2xl mb-1">💪</div>
-                  <div className="text-xl font-bold text-white">{stats.total_reps?.toLocaleString() || 0}</div>
-                  <div className="text-xs text-gray-400">Total Reps</div>
-                </div>
-                <div className="bg-gray-700/50 rounded-lg p-3 text-center">
-                  <div className="text-2xl mb-1">✅</div>
-                  <div className="text-xl font-bold text-white">{stats.sessions_completed || 0}</div>
-                  <div className="text-xs text-gray-400">Sessions</div>
-                </div>
-                <div className="bg-gray-700/50 rounded-lg p-3 text-center">
-                  <div className="text-2xl mb-1">🏆</div>
-                  <div className="text-xl font-bold text-white">{myBadges.length}</div>
-                  <div className="text-xs text-gray-400">Badges</div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
+              <div className="bg-gray-700/50 rounded-lg p-3 text-center">
+                <div className="text-2xl mb-1">🔥</div>
+                <div className="text-xl font-bold text-white">{stats?.current_streak || 0}</div>
+                <div className="text-xs text-gray-400">Day Streak</div>
+              </div>
+              <div className="bg-gray-700/50 rounded-lg p-3 text-center">
+                <div className="text-2xl mb-1">💪</div>
+                <div className="text-xl font-bold text-white">{trophyData ? trophyData.totalReps.toLocaleString() : stats?.total_reps?.toLocaleString() || 0}</div>
+                <div className="text-xs text-gray-400">Total Reps</div>
+              </div>
+              <div className="bg-gray-700/50 rounded-lg p-3 text-center">
+                <div className="text-2xl mb-1">✅</div>
+                <div className="text-xl font-bold text-white">{trophyData ? trophyData.totalDrills : stats?.sessions_completed || 0}</div>
+                <div className="text-xs text-gray-400">Drills</div>
+              </div>
+              <div className="bg-gray-700/50 rounded-lg p-3 text-center">
+                <div className="text-2xl mb-1">🏆</div>
+                <div className="text-xl font-bold text-white">{myBadges.length}</div>
+                <div className="text-xs text-gray-400">Badges</div>
+              </div>
+            </div>
+
+            {/* Tiers Achieved */}
+            {trophyData && trophyData.tiersAchieved && trophyData.tiersAchieved.length > 0 && (
+              <div className="mt-4">
+                <h4 className="text-sm font-semibold text-gray-300 mb-3">🎖️ Tiers Achieved</h4>
+                <div className="grid grid-cols-3 sm:grid-cols-6 gap-3">
+                  {trophyData.tiersAchieved.map((achievedTier, index) => (
+                    <div
+                      key={index}
+                      className="bg-gray-700/50 rounded-lg p-2 text-center border-2"
+                      style={{ borderColor: achievedTier.color }}
+                    >
+                      <div className="text-3xl mb-1">{achievedTier.emoji}</div>
+                      <div className="text-xs font-semibold text-white">{achievedTier.name}</div>
+                    </div>
+                  ))}
                 </div>
               </div>
             )}
-          </div>
-        )}
 
-        {/* Badges Showcase */}
-        {userProfile.role === 'player' && myBadges.length > 0 && (
-          <div className="bg-gray-800 rounded-xl p-6 border border-gray-700 mb-6">
-            <h3 className="text-white font-semibold mb-4">🏆 Badge Collection ({myBadges.length})</h3>
-            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-4">
-              {myBadges.map(badge => (
-                <div
-                  key={badge.id}
-                  className="bg-gray-700/50 rounded-lg p-3 text-center hover:bg-gray-700 transition group cursor-help"
-                  title={badge.description}
-                >
-                  <div className="text-4xl mb-1">{badge.icon}</div>
-                  <div className="text-xs text-white font-semibold truncate">{badge.name}</div>
+            {/* Badges Earned in Trophy Case */}
+            {myBadges && myBadges.length > 0 && (
+              <div className="mt-4">
+                <h4 className="text-sm font-semibold text-gray-300 mb-3">🏅 Badges Earned ({myBadges.length})</h4>
+                <div className="grid grid-cols-4 sm:grid-cols-6 gap-3">
+                  {myBadges.map((badge) => (
+                    <div
+                      key={badge.id}
+                      className="bg-gray-700/50 rounded-lg p-2 text-center hover:bg-gray-700 transition cursor-help"
+                      title={badge.description}
+                    >
+                      <div className="text-3xl mb-1">{badge.icon}</div>
+                      <div className="text-xs text-white font-semibold truncate">{badge.name}</div>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
+              </div>
+            )}
+
+            {/* Additional Trophy Data if available */}
+            {trophyData && trophyData.longestStreak > 0 && (
+              <div className="mt-4 bg-gradient-to-br from-purple-600/20 to-pink-600/20 rounded-lg p-3 text-center border border-purple-500/30">
+                <div className="text-sm text-gray-300 mb-1">⚡ Longest Streak</div>
+                <div className="text-2xl font-bold text-white">{trophyData.longestStreak} Days</div>
+              </div>
+            )}
+
+            {/* Team Contributions if available */}
+            {trophyData && trophyData.teamStats && trophyData.teamStats.length > 1 && (
+              <div className="mt-4">
+                <h4 className="text-sm font-semibold text-gray-300 mb-2">Team Contributions</h4>
+                <div className="space-y-2">
+                  {trophyData.teamStats.map((team, index) => (
+                    <div
+                      key={index}
+                      className="bg-gray-700/30 rounded-lg p-2 text-xs"
+                      style={{ borderLeft: `3px solid ${team.teamColors.primary}` }}
+                    >
+                      <div className="font-semibold text-white mb-1">{team.teamName}</div>
+                      <div className="grid grid-cols-3 gap-2">
+                        <div><span className="text-blue-400 font-semibold">{team.points}</span> pts</div>
+                        <div><span className="text-green-400 font-semibold">{team.reps}</span> reps</div>
+                        <div><span className="text-purple-400 font-semibold">{team.drills}</span> drills</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -362,7 +591,7 @@ export default function Profile({ user, userProfile }) {
                   </span>
                 </label>
                 <p className="text-gray-400 text-xs mt-2">
-                  JPG, PNG or GIF. Max 2MB.
+                  JPG, PNG or GIF. Max 2MB. {uploadSize && `(${uploadSize})`}
                 </p>
               </div>
             </div>
@@ -476,6 +705,18 @@ export default function Profile({ user, userProfile }) {
           </div>
         </div>
       </div>
+
+      {/* Share Modal */}
+      {showShareModal && (
+        <ShareModal
+          isOpen={showShareModal}
+          onClose={() => setShowShareModal(false)}
+          shareData={shareData}
+          teamColors={teamColors}
+          userName={profile.display_name || 'Player'}
+          teamName={myTeams.find(t => t.id === profile.active_team_id)?.name || 'Team'}
+        />
+      )}
     </div>
   );
 }
