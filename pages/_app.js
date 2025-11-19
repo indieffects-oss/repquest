@@ -1,4 +1,4 @@
-// pages/_app.js - SIMPLIFIED VERSION - No hanging
+// pages/_app.js - Balanced version with proper auth handling
 import '../styles/globals.css';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
@@ -13,46 +13,59 @@ function MyApp({ Component, pageProps }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // CRITICAL: Always stop loading after max 3 seconds
-    const maxLoadTimeout = setTimeout(() => {
-      console.log('⏰ Max load time reached - showing page');
-      setLoading(false);
-    }, 3000);
+    let isMounted = true;
+
+    // Safety timeout - 10 seconds should be enough for auth
+    const safetyTimeout = setTimeout(() => {
+      if (isMounted) {
+        console.warn('⏰ Auth timeout - proceeding anyway');
+        setLoading(false);
+      }
+    }, 10000);
 
     const initAuth = async () => {
       try {
         const { data: { session } } = await supabase.auth.getSession();
 
+        if (!isMounted) return;
+
         if (session?.user) {
           setUser(session.user);
           await fetchUserProfile(session.user.id);
+        } else {
+          setLoading(false);
         }
       } catch (err) {
-        console.error('Auth error:', err);
-      } finally {
-        clearTimeout(maxLoadTimeout);
-        setLoading(false);
+        console.error('Auth init error:', err);
+        if (isMounted) setLoading(false);
       }
     };
 
     initAuth();
 
-    // Listen for auth changes
+    // Listen for auth state changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (!isMounted) return;
+
+      console.log('Auth event:', event);
+
       if (event === 'SIGNED_OUT') {
         setUser(null);
         setUserProfile(null);
+        setLoading(false);
         if (router.pathname !== '/' && router.pathname !== '/about' && router.pathname !== '/coach-signup') {
           router.push('/');
         }
       } else if (event === 'SIGNED_IN' && session?.user) {
         setUser(session.user);
+        setLoading(true);
         await fetchUserProfile(session.user.id);
       }
     });
 
     return () => {
-      clearTimeout(maxLoadTimeout);
+      isMounted = false;
+      clearTimeout(safetyTimeout);
       subscription.unsubscribe();
     };
   }, [router]);
@@ -66,13 +79,15 @@ function MyApp({ Component, pageProps }) {
         .single();
 
       if (error) {
-        console.error('Profile error:', error);
+        console.error('Profile fetch error:', error);
+        setLoading(false);
         return;
       }
 
       setUserProfile(data);
+      setLoading(false);
 
-      // Redirect only if on login page
+      // Redirect only if on login/home page
       if (router.pathname === '/') {
         if (!data.display_name) {
           router.push('/profile');
@@ -84,6 +99,7 @@ function MyApp({ Component, pageProps }) {
       }
     } catch (err) {
       console.error('Error fetching profile:', err);
+      setLoading(false);
     }
   };
 
