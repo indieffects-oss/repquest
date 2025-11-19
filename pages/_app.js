@@ -1,6 +1,6 @@
-// pages/_app.js - v0.43 with active team support
+// pages/_app.js - SIMPLIFIED VERSION - No hanging
 import '../styles/globals.css';
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import { supabase } from '../lib/supabaseClient';
@@ -10,39 +10,28 @@ function MyApp({ Component, pageProps }) {
   const router = useRouter();
   const [user, setUser] = useState(null);
   const [userProfile, setUserProfile] = useState(null);
-  const [teamColors, setTeamColors] = useState(null);
   const [loading, setLoading] = useState(true);
-  const isFetching = useRef(false);
-  const hasUserProfile = useRef(false);
 
   useEffect(() => {
-    let mounted = true;
-    
+    // CRITICAL: Always stop loading after max 3 seconds
+    const maxLoadTimeout = setTimeout(() => {
+      console.log('⏰ Max load time reached - showing page');
+      setLoading(false);
+    }, 3000);
+
     const initAuth = async () => {
-      if (isFetching.current) {
-        console.log('Already fetching, skipping');
-        return;
-      }
-      
-      isFetching.current = true;
-      
       try {
         const { data: { session } } = await supabase.auth.getSession();
-        
-        if (!mounted) return;
-        
+
         if (session?.user) {
           setUser(session.user);
           await fetchUserProfile(session.user.id);
-          hasUserProfile.current = true;
-        } else {
-          setLoading(false);
         }
       } catch (err) {
-        console.error('Error getting session:', err);
-        if (mounted) setLoading(false);
+        console.error('Auth error:', err);
       } finally {
-        isFetching.current = false;
+        clearTimeout(maxLoadTimeout);
+        setLoading(false);
       }
     };
 
@@ -50,45 +39,20 @@ function MyApp({ Component, pageProps }) {
 
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (!mounted) return;
-      
-      console.log('Auth event:', event, 'Has profile:', hasUserProfile.current);
-      
       if (event === 'SIGNED_OUT') {
         setUser(null);
         setUserProfile(null);
-        setTeamColors(null);
-        setLoading(false);
-        isFetching.current = false;
-        hasUserProfile.current = false;
-        
         if (router.pathname !== '/' && router.pathname !== '/about' && router.pathname !== '/coach-signup') {
           router.push('/');
         }
       } else if (event === 'SIGNED_IN' && session?.user) {
-        if (hasUserProfile.current) {
-          console.log('Already have profile, ignoring SIGNED_IN from tab switch');
-          setUser(session.user);
-          return;
-        }
-        
-        if (isFetching.current) {
-          console.log('Already fetching, ignoring duplicate SIGNED_IN');
-          return;
-        }
-        
-        console.log('Processing SIGNED_IN - real login');
-        isFetching.current = true;
         setUser(session.user);
-        setLoading(true);
         await fetchUserProfile(session.user.id);
-        hasUserProfile.current = true;
-        isFetching.current = false;
       }
     });
 
     return () => {
-      mounted = false;
+      clearTimeout(maxLoadTimeout);
       subscription.unsubscribe();
     };
   }, [router]);
@@ -101,18 +65,12 @@ function MyApp({ Component, pageProps }) {
         .eq('id', userId)
         .single();
 
-      if (error) throw error;
+      if (error) {
+        console.error('Profile error:', error);
+        return;
+      }
 
       setUserProfile(data);
-      
-      // Fetch team colors based on role and active team
-      if (data.role === 'coach') {
-        await fetchCoachTeamColors(userId);
-      } else if (data.role === 'player' && data.active_team_id) {
-        await fetchPlayerTeamColors(data.active_team_id);
-      }
-      
-      setLoading(false);
 
       // Redirect only if on login page
       if (router.pathname === '/') {
@@ -126,63 +84,8 @@ function MyApp({ Component, pageProps }) {
       }
     } catch (err) {
       console.error('Error fetching profile:', err);
-      setLoading(false);
     }
   };
-
-  const fetchCoachTeamColors = async (userId) => {
-    try {
-      const { data } = await supabase
-        .from('teams')
-        .select('primary_color, secondary_color')
-        .eq('coach_id', userId)
-        .limit(1)
-        .maybeSingle();
-
-      if (data) {
-        const primary = data.primary_color || '#3B82F6';
-        const secondary = data.secondary_color || '#1E40AF';
-        setTeamColors({ primary, secondary });
-        applyTeamColors(primary, secondary);
-      } else {
-        applyTeamColors('#3B82F6', '#1E40AF');
-      }
-    } catch (err) {
-      applyTeamColors('#3B82F6', '#1E40AF');
-    }
-  };
-
-  const fetchPlayerTeamColors = async (activeTeamId) => {
-    try {
-      const { data } = await supabase
-        .from('teams')
-        .select('primary_color, secondary_color')
-        .eq('id', activeTeamId)
-        .single();
-
-      if (data) {
-        const primary = data.primary_color || '#3B82F6';
-        const secondary = data.secondary_color || '#1E40AF';
-        setTeamColors({ primary, secondary });
-        applyTeamColors(primary, secondary);
-      } else {
-        applyTeamColors('#3B82F6', '#1E40AF');
-      }
-    } catch (err) {
-      applyTeamColors('#3B82F6', '#1E40AF');
-    }
-  };
-
-  const applyTeamColors = (primary, secondary) => {
-    if (typeof document !== 'undefined') {
-      document.documentElement.style.setProperty('--color-primary', primary);
-      document.documentElement.style.setProperty('--color-secondary', secondary);
-    }
-  };
-
-  useEffect(() => {
-    applyTeamColors('#3B82F6', '#1E40AF');
-  }, []);
 
   if (loading) {
     return (
