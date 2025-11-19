@@ -1,7 +1,7 @@
-// pages/api/send-invite.js - Production-ready with consistent syntax
+// pages/api/send-invite.js - Proper Next.js API route syntax
 const { Resend } = require('resend');
 
-module.exports = async function handler(req, res) {
+export default async function handler(req, res) {
   const resend = new Resend(process.env.RESEND_API_KEY);
 
   if (req.method !== 'POST') {
@@ -20,7 +20,7 @@ module.exports = async function handler(req, res) {
   }
 
   try {
-    const emailConfig = {
+    const { data, error } = await resend.emails.send({
       from: 'RepQuest <invites@mantistimer.com>',
       to: to,
       replyTo: coachEmail || 'invites@mantistimer.com',
@@ -125,9 +125,7 @@ module.exports = async function handler(req, res) {
         </body>
         </html>
       `,
-    };
-
-    const { data, error } = await resend.emails.send(emailConfig);
+    });
 
     if (error) {
       console.error('Resend error:', error);
@@ -140,4 +138,4 @@ module.exports = async function handler(req, res) {
     console.error('Send invite error:', error);
     res.status(500).json({ error: 'Internal server error', details: error.message });
   }
-};
+}
