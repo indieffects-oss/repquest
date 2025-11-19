@@ -1,7 +1,8 @@
-// pages/teams.js - v0.45 with custom invite emails
+// pages/teams.js - v0.45 with custom invite emails and image compression
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import { supabase } from '../lib/supabaseClient';
+import { compressImage } from '../lib/imageCompression';
 
 export default function Teams({ user, userProfile }) {
   const router = useRouter();
@@ -69,20 +70,23 @@ export default function Teams({ user, userProfile }) {
       return;
     }
 
-    if (file.size > 2 * 1024 * 1024) {
-      alert('Image must be less than 2MB');
-      return;
-    }
-
     setUploadingLogo(true);
 
     try {
+      // Compress image if over 2MB
+      let fileToUpload = file;
+      if (file.size > 2 * 1024 * 1024) {
+        console.log(`Compressing image from ${(file.size / 1024 / 1024).toFixed(2)}MB`);
+        fileToUpload = await compressImage(file, 2);
+        console.log(`Compressed to ${(fileToUpload.size / 1024 / 1024).toFixed(2)}MB`);
+      }
+
       const fileExt = file.name.split('.').pop();
       const fileName = `${teamId}-${Date.now()}.${fileExt}`;
 
       const { data: uploadData, error: uploadError } = await supabase.storage
         .from('team-logos')
-        .upload(fileName, file, {
+        .upload(fileName, fileToUpload, {
           cacheControl: '3600',
           upsert: true
         });
