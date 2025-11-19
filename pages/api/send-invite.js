@@ -1,7 +1,7 @@
-// pages/api/send-invite.js - Send team invite emails with logo and reply-to
+// pages/api/send-invite.js - Production-ready with consistent syntax
 const { Resend } = require('resend');
 
-export default async function handler(req, res) {
+module.exports = async function handler(req, res) {
   const resend = new Resend(process.env.RESEND_API_KEY);
 
   if (req.method !== 'POST') {
@@ -9,7 +9,6 @@ export default async function handler(req, res) {
   }
 
   const { to, teamName, coachName, coachEmail, inviteLink, message, sport, teamLogo } = req.body;
-  
 
   if (!to || !teamName || !coachName || !inviteLink) {
     return res.status(400).json({ error: 'Missing required fields' });
@@ -24,7 +23,7 @@ export default async function handler(req, res) {
     const emailConfig = {
       from: 'RepQuest <invites@mantistimer.com>',
       to: to,
-      reply_To: coachEmail || 'invites@mantistimer.com', // Reply goes to coach, or fallback
+      replyTo: coachEmail || 'invites@mantistimer.com',
       subject: `${coachName} invited you to join ${teamName}!`,
       html: `
         <!DOCTYPE html>
@@ -128,7 +127,6 @@ export default async function handler(req, res) {
       `,
     };
 
-    
     const { data, error } = await resend.emails.send(emailConfig);
 
     if (error) {
@@ -142,4 +140,4 @@ export default async function handler(req, res) {
     console.error('Send invite error:', error);
     res.status(500).json({ error: 'Internal server error', details: error.message });
   }
-}
+};
