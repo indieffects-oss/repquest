@@ -27,7 +27,7 @@ export default function Navbar({ user, userProfile }) {
         .eq('user_id', user.id);
 
       if (error) throw error;
-      
+
       const teams = data.map(tm => tm.teams).filter(Boolean);
       setMyTeams(teams);
     } catch (err) {
@@ -37,7 +37,7 @@ export default function Navbar({ user, userProfile }) {
 
   const handleTeamSwitch = async (teamId) => {
     if (teamId === userProfile.active_team_id) return;
-    
+
     setSwitchingTeam(true);
     try {
       const { error } = await supabase
@@ -77,7 +77,7 @@ export default function Navbar({ user, userProfile }) {
   const activeTeam = myTeams.find(t => t.id === userProfile?.active_team_id);
 
   return (
-    <nav 
+    <nav
       className="border-b border-gray-700"
       style={{
         background: `linear-gradient(135deg, ${primaryColor}, ${secondaryColor})`
@@ -99,40 +99,37 @@ export default function Navbar({ user, userProfile }) {
               <>
                 <Link
                   href="/dashboard"
-                  className={`px-4 py-2 rounded-lg transition ${
-                    isActive('/dashboard')
+                  className={`px-4 py-2 rounded-lg transition ${isActive('/dashboard')
                       ? 'bg-white/20 text-white backdrop-blur-sm'
                       : 'text-white/90 hover:bg-white/10'
-                  }`}
+                    }`}
                 >
                   Drills
                 </Link>
                 <Link
                   href="/analytics"
                   className={`px-4 py-2 rounded-lg transition ${isActive('/analytics')
-                      ? 'bg-white/20 text-white backdrop-blur-sm'
-                      : 'text-white/90 hover:bg-white/10'
+                    ? 'bg-white/20 text-white backdrop-blur-sm'
+                    : 'text-white/90 hover:bg-white/10'
                     }`}
                 >
                   Analytics
                 </Link>
                 <Link
                   href="/scores"
-                  className={`px-4 py-2 rounded-lg transition ${
-                    isActive('/scores')
+                  className={`px-4 py-2 rounded-lg transition ${isActive('/scores')
                       ? 'bg-white/20 text-white backdrop-blur-sm'
                       : 'text-white/90 hover:bg-white/10'
-                  }`}
+                    }`}
                 >
                   Scores
                 </Link>
                 <Link
                   href="/teams"
-                  className={`px-4 py-2 rounded-lg transition ${
-                    isActive('/teams')
+                  className={`px-4 py-2 rounded-lg transition ${isActive('/teams')
                       ? 'bg-white/20 text-white backdrop-blur-sm'
                       : 'text-white/90 hover:bg-white/10'
-                  }`}
+                    }`}
                 >
                   Teams
                 </Link>
@@ -141,56 +138,51 @@ export default function Navbar({ user, userProfile }) {
               <>
                 <Link
                   href="/drills"
-                  className={`px-4 py-2 rounded-lg transition ${
-                    isActive('/drills')
+                  className={`px-4 py-2 rounded-lg transition ${isActive('/drills')
                       ? 'bg-white/20 text-white backdrop-blur-sm'
                       : 'text-white/90 hover:bg-white/10'
-                  }`}
+                    }`}
                 >
                   Drills
                 </Link>
                 <Link
                   href="/my-results"
-                  className={`px-4 py-2 rounded-lg transition ${
-                    isActive('/my-results')
+                  className={`px-4 py-2 rounded-lg transition ${isActive('/my-results')
                       ? 'bg-white/20 text-white backdrop-blur-sm'
                       : 'text-white/90 hover:bg-white/10'
-                  }`}
+                    }`}
                 >
                   My Results
                 </Link>
               </>
             )}
-            
+
             <Link
               href="/leaderboard"
-              className={`px-4 py-2 rounded-lg transition ${
-                isActive('/leaderboard')
+              className={`px-4 py-2 rounded-lg transition ${isActive('/leaderboard')
                   ? 'bg-white/20 text-white backdrop-blur-sm'
                   : 'text-white/90 hover:bg-white/10'
-              }`}
+                }`}
             >
               Leaderboard
             </Link>
-            
+
             <Link
               href="/profile"
-              className={`px-4 py-2 rounded-lg transition ${
-                isActive('/profile')
+              className={`px-4 py-2 rounded-lg transition ${isActive('/profile')
                   ? 'bg-white/20 text-white backdrop-blur-sm'
                   : 'text-white/90 hover:bg-white/10'
-              }`}
+                }`}
             >
               Profile
             </Link>
 
             <Link
               href="/about"
-              className={`px-4 py-2 rounded-lg transition ${
-                isActive('/about')
+              className={`px-4 py-2 rounded-lg transition ${isActive('/about')
                   ? 'bg-white/20 text-white backdrop-blur-sm'
                   : 'text-white/90 hover:bg-white/10'
-              }`}
+                }`}
             >
               About
             </Link>
@@ -210,7 +202,7 @@ export default function Navbar({ user, userProfile }) {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                   </svg>
                 </button>
-                
+
                 {/* Dropdown */}
                 <div className="absolute right-0 mt-2 w-48 bg-gray-800 border border-gray-700 rounded-lg shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50">
                   {myTeams.map(team => (
@@ -218,11 +210,10 @@ export default function Navbar({ user, userProfile }) {
                       key={team.id}
                       onClick={() => handleTeamSwitch(team.id)}
                       disabled={switchingTeam}
-                      className={`w-full text-left px-4 py-2 hover:bg-gray-700 transition ${
-                        team.id === userProfile.active_team_id 
-                          ? 'bg-blue-900/30 text-blue-400' 
+                      className={`w-full text-left px-4 py-2 hover:bg-gray-700 transition ${team.id === userProfile.active_team_id
+                          ? 'bg-blue-900/30 text-blue-400'
                           : 'text-white'
-                      } first:rounded-t-lg last:rounded-b-lg`}
+                        } first:rounded-t-lg last:rounded-b-lg`}
                     >
                       {team.id === userProfile.active_team_id && '✓ '}
                       {team.name}
@@ -240,7 +231,7 @@ export default function Navbar({ user, userProfile }) {
                 {userProfile?.total_points || 0} pts
               </div>
             </div>
-            
+
             <button
               onClick={handleLogout}
               className="px-4 py-2 bg-white/20 hover:bg-white/30 backdrop-blur-sm text-white rounded-lg transition text-sm font-semibold"
@@ -277,11 +268,10 @@ export default function Navbar({ user, userProfile }) {
                       key={team.id}
                       onClick={() => handleTeamSwitch(team.id)}
                       disabled={switchingTeam}
-                      className={`w-full text-left px-3 py-2 rounded transition ${
-                        team.id === userProfile.active_team_id 
-                          ? 'bg-blue-600 text-white' 
+                      className={`w-full text-left px-3 py-2 rounded transition ${team.id === userProfile.active_team_id
+                          ? 'bg-blue-600 text-white'
                           : 'bg-white/10 text-white hover:bg-white/20'
-                      }`}
+                        }`}
                     >
                       {team.id === userProfile.active_team_id && '✓ '}
                       {team.name}
@@ -296,33 +286,40 @@ export default function Navbar({ user, userProfile }) {
                 <Link
                   href="/dashboard"
                   onClick={() => setMobileMenuOpen(false)}
-                  className={`block px-4 py-3 rounded-lg transition ${
-                    isActive('/dashboard')
+                  className={`block px-4 py-3 rounded-lg transition ${isActive('/dashboard')
                       ? 'bg-white/20 text-white backdrop-blur-sm'
                       : 'text-white/90 hover:bg-white/10'
-                  }`}
+                    }`}
                 >
                   Drills
                 </Link>
                 <Link
-                  href="/scores"
+                  href="/analytics"
                   onClick={() => setMobileMenuOpen(false)}
-                  className={`block px-4 py-3 rounded-lg transition ${
-                    isActive('/scores')
+                  className={`block px-4 py-3 rounded-lg transition ${isActive('/analytics')
                       ? 'bg-white/20 text-white backdrop-blur-sm'
                       : 'text-white/90 hover:bg-white/10'
-                  }`}
+                    }`}
+                >
+                  Analytics
+                </Link>
+                <Link
+                  href="/scores"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className={`block px-4 py-3 rounded-lg transition ${isActive('/scores')
+                      ? 'bg-white/20 text-white backdrop-blur-sm'
+                      : 'text-white/90 hover:bg-white/10'
+                    }`}
                 >
                   Scores
                 </Link>
                 <Link
                   href="/teams"
                   onClick={() => setMobileMenuOpen(false)}
-                  className={`block px-4 py-3 rounded-lg transition ${
-                    isActive('/teams')
+                  className={`block px-4 py-3 rounded-lg transition ${isActive('/teams')
                       ? 'bg-white/20 text-white backdrop-blur-sm'
                       : 'text-white/90 hover:bg-white/10'
-                  }`}
+                    }`}
                 >
                   Teams
                 </Link>
@@ -332,48 +329,44 @@ export default function Navbar({ user, userProfile }) {
                 <Link
                   href="/drills"
                   onClick={() => setMobileMenuOpen(false)}
-                  className={`block px-4 py-3 rounded-lg transition ${
-                    isActive('/drills')
+                  className={`block px-4 py-3 rounded-lg transition ${isActive('/drills')
                       ? 'bg-white/20 text-white backdrop-blur-sm'
                       : 'text-white/90 hover:bg-white/10'
-                  }`}
+                    }`}
                 >
                   Drills
                 </Link>
                 <Link
                   href="/my-results"
                   onClick={() => setMobileMenuOpen(false)}
-                  className={`block px-4 py-3 rounded-lg transition ${
-                    isActive('/my-results')
+                  className={`block px-4 py-3 rounded-lg transition ${isActive('/my-results')
                       ? 'bg-white/20 text-white backdrop-blur-sm'
                       : 'text-white/90 hover:bg-white/10'
-                  }`}
+                    }`}
                 >
                   My Results
                 </Link>
               </>
             )}
-            
+
             <Link
               href="/leaderboard"
               onClick={() => setMobileMenuOpen(false)}
-              className={`block px-4 py-3 rounded-lg transition ${
-                isActive('/leaderboard')
+              className={`block px-4 py-3 rounded-lg transition ${isActive('/leaderboard')
                   ? 'bg-white/20 text-white backdrop-blur-sm'
                   : 'text-white/90 hover:bg-white/10'
-              }`}
+                }`}
             >
               Leaderboard
             </Link>
-            
+
             <Link
               href="/profile"
               onClick={() => setMobileMenuOpen(false)}
-              className={`block px-4 py-3 rounded-lg transition ${
-                isActive('/profile')
+              className={`block px-4 py-3 rounded-lg transition ${isActive('/profile')
                   ? 'bg-white/20 text-white backdrop-blur-sm'
                   : 'text-white/90 hover:bg-white/10'
-              }`}
+                }`}
             >
               Profile
             </Link>
@@ -381,11 +374,10 @@ export default function Navbar({ user, userProfile }) {
             <Link
               href="/about"
               onClick={() => setMobileMenuOpen(false)}
-              className={`block px-4 py-3 rounded-lg transition ${
-                isActive('/about')
+              className={`block px-4 py-3 rounded-lg transition ${isActive('/about')
                   ? 'bg-white/20 text-white backdrop-blur-sm'
                   : 'text-white/90 hover:bg-white/10'
-              }`}
+                }`}
             >
               About
             </Link>
