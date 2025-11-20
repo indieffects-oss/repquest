@@ -191,7 +191,7 @@ export default function PlayerDrill({ user, userProfile }) {
     try {
       const pointsEarned = didComplete ? drill.points_for_completion : 0;
 
-      await supabase.from('drill_results').insert({
+      const { error: insertError1 } = await supabase.from('drill_results').insert({
         user_id: user.id,
         drill_id: drill.id,
         drill_name: drill.name,
@@ -200,6 +200,11 @@ export default function PlayerDrill({ user, userProfile }) {
         timestamp: new Date().toISOString(),
         team_id: userProfile.active_team_id  // ADD THIS LINE
       });
+
+      if (insertError1) {
+        console.error("Error inserting drill result:", insertError1);
+        throw new Error(`Failed to save drill result: ${insertError1.message}`);
+      }
 
       const { data: userData } = await supabase
         .from('users')
@@ -290,15 +295,20 @@ export default function PlayerDrill({ user, userProfile }) {
         ? drill.points_for_completion
         : (repsInt * drill.points_per_rep) + drill.points_for_completion;
 
-      await supabase.from('drill_results').insert({
+      const { error: insertError } = await supabase.from('drill_results').insert({
         user_id: user.id,
         drill_id: drill.id,
         drill_name: drill.name,
         reps: repsInt,
         points: totalPoints,
         timestamp: new Date().toISOString(),
-        team_id: userProfile.active_team_id  // ADD THIS LINE
+        team_id: userProfile.active_team_id
       });
+
+      if (insertError) {
+        console.error('Error inserting drill result:', insertError);
+        throw new Error(`Failed to save drill result: ${insertError.message}`);
+      }
 
       const { data: userData } = await supabase
         .from('users')
