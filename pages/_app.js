@@ -189,7 +189,11 @@ function MyApp({ Component, pageProps }) {
     applyTeamColors('#3B82F6', '#1E40AF');
   }, []);
 
-  if (loading) {
+  // Allow invite pages to load without auth
+  const publicPaths = ['/', '/about', '/coach-signup', '/invite'];
+  const isPublicPath = publicPaths.some(path => router.pathname.startsWith(path));
+
+  if (loading && !isPublicPath) {
     return (
       <div className="min-h-screen bg-gray-900 flex items-center justify-center">
         <div className="text-white text-xl">Loading...</div>
@@ -197,7 +201,7 @@ function MyApp({ Component, pageProps }) {
     );
   }
 
-  const hideNavbar = router.pathname === '/' || router.pathname === '/coach-signup' || !user;
+  const hideNavbar = router.pathname === '/' || router.pathname === '/coach-signup' || router.pathname.startsWith('/invite') || !user;
 
   return (
     <div className="min-h-screen bg-gray-900">
