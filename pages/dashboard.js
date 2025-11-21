@@ -153,7 +153,7 @@ export default function Dashboard({ user, userProfile }) {
           .order('sort_order', { ascending: false })
           .limit(1);
 
-        const nextSortOrder = -1; // Always put new drills first
+        const nextSortOrder = (maxData?.[0]?.sort_order || 0) + 1; // Put new drills at the end
 
         const { error } = await supabase.from('drills').insert({
           ...drillData,
@@ -206,7 +206,7 @@ export default function Dashboard({ user, userProfile }) {
         .order('sort_order', { ascending: false })
         .limit(1);
 
-      const nextSortOrder = -1; // Put copied drills at top too
+      const nextSortOrder = (maxData?.[0]?.sort_order || 0) + 1; // Put copied drills at the end
 
       // Copy ALL relevant fields including sport and tags
       const { error } = await supabase.from('drills').insert({
