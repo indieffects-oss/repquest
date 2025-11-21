@@ -345,6 +345,7 @@ export default function PlayerDrill({ user, userProfile }) {
 
   const handleSubmit = async () => {
     const repsInt = drill.type === 'stopwatch' ? 0 : parseInt(reps || 0);
+    const duration = drill.type === 'stopwatch' ? stopwatchTime : null;
 
     if (drill.type !== 'stopwatch' && (!reps || repsInt <= 0)) {
       alert('Please enter a valid number');
@@ -363,6 +364,7 @@ export default function PlayerDrill({ user, userProfile }) {
         drill_id: drill.id,
         drill_name: drill.name,
         reps: repsInt,
+        duration_seconds: duration,
         points: totalPoints,
         timestamp: new Date().toISOString(),
         team_id: userProfile.active_team_id

@@ -1,4 +1,4 @@
-// pages/drills.js - v0.43 with team-specific drills
+// pages/drills.js - v0.46 with top scores display
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import { supabase } from '../lib/supabaseClient';
@@ -9,6 +9,7 @@ export default function DrillsList({ user, userProfile }) {
   const [completedToday, setCompletedToday] = useState(new Set());
   const [loading, setLoading] = useState(true);
   const [teamName, setTeamName] = useState('');
+  const [topScores, setTopScores] = useState({});
 
   useEffect(() => {
     if (!user || !userProfile) return;
@@ -16,66 +17,151 @@ export default function DrillsList({ user, userProfile }) {
     fetchTodayCompletions();
   }, [user, userProfile]);
 
- const fetchDrills = async () => {
-  try {
-    const activeTeamId = userProfile.active_team_id;
-    console.log('1. Player active_team_id:', activeTeamId);
-    
-    if (!activeTeamId) {
-      setDrills([]);
+  const fetchDrills = async () => {
+    try {
+      const activeTeamId = userProfile.active_team_id;
+      console.log('1. Player active_team_id:', activeTeamId);
+
+      if (!activeTeamId) {
+        setDrills([]);
+        setLoading(false);
+        return;
+      }
+
+      // Get team info including coach_id
+      const { data: teamData, error: teamError } = await supabase
+        .from('teams')
+        .select('name, coach_id')
+        .eq('id', activeTeamId)
+        .single();
+
+      console.log('2. Team data:', teamData);
+      console.log('2. Team error:', teamError);
+
+      if (teamError) throw teamError;
+
+      if (!teamData) {
+        setDrills([]);
+        setLoading(false);
+        return;
+      }
+
+      setTeamName(teamData.name);
+
+      console.log('3. Fetching drills for coach_id:', teamData.coach_id);
+
+      // Fetch drills created by this team's coach
+      const { data, error } = await supabase
+        .from('drills')
+        .select('*')
+        .eq('created_by', teamData.coach_id)
+        .eq('is_active', true)
+        .order('sort_order', { ascending: true })
+        .order('created_at', { ascending: false });
+
+      console.log('4. Drills found:', data?.length || 0);
+      console.log('4. All drill data:', JSON.stringify(data, null, 2));
+      console.log('4. Drill names:', data?.map(d => d.name));
+      console.log('4. Fetch error:', error);
+
+      if (error) throw error;
+      setDrills(data || []);
+
+      // Fetch top scores for each drill
+      if (data && data.length > 0) {
+        await fetchTopScores(data, activeTeamId);
+      }
+    } catch (err) {
+      console.error('Error fetching drills:', err);
+    } finally {
       setLoading(false);
-      return;
     }
+  };
 
-    // Get team info including coach_id
-    const { data: teamData, error: teamError } = await supabase
-      .from('teams')
-      .select('name, coach_id')
-      .eq('id', activeTeamId)
-      .single();
+  const fetchTopScores = async (drillsList, teamId) => {
+    try {
+      const scores = {};
 
-    console.log('2. Team data:', teamData);
-    console.log('2. Team error:', teamError);
+      for (const drill of drillsList) {
+        if (drill.type === 'timer' || drill.type === 'reps') {
+          // Get highest reps
+          const { data } = await supabase
+            .from('drill_results')
+            .select('reps, users(display_name)')
+            .eq('drill_id', drill.id)
+            .eq('team_id', teamId)
+            .order('reps', { ascending: false })
+            .limit(1)
+            .maybeSingle();
 
-    if (teamError) throw teamError;
-    
-    if (!teamData) {
-      setDrills([]);
-      setLoading(false);
-      return;
+          if (data) {
+            scores[drill.id] = {
+              value: data.reps,
+              playerName: data.users?.display_name || 'Unknown',
+              label: `${data.reps} reps`
+            };
+          }
+        } else if (drill.type === 'stopwatch') {
+          // Get fastest time
+          const { data } = await supabase
+            .from('drill_results')
+            .select('duration_seconds, users(display_name)')
+            .eq('drill_id', drill.id)
+            .eq('team_id', teamId)
+            .not('duration_seconds', 'is', null)
+            .order('duration_seconds', { ascending: true })
+            .limit(1)
+            .maybeSingle();
+
+          if (data && data.duration_seconds) {
+            const mins = Math.floor(data.duration_seconds / 60);
+            const secs = data.duration_seconds % 60;
+            scores[drill.id] = {
+              value: data.duration_seconds,
+              playerName: data.users?.display_name || 'Unknown',
+              label: `${mins}:${secs.toString().padStart(2, '0')}`
+            };
+          }
+        } else if (drill.type === 'check') {
+          // Get most completions
+          const { data } = await supabase
+            .from('drill_results')
+            .select('user_id, users(display_name)')
+            .eq('drill_id', drill.id)
+            .eq('team_id', teamId);
+
+          if (data && data.length > 0) {
+            // Count completions per user
+            const counts = {};
+            data.forEach(record => {
+              const userId = record.user_id;
+              counts[userId] = counts[userId] || { count: 0, name: record.users?.display_name || 'Unknown' };
+              counts[userId].count++;
+            });
+
+            // Find user with most completions
+            const topUser = Object.values(counts).sort((a, b) => b.count - a.count)[0];
+            if (topUser) {
+              scores[drill.id] = {
+                value: topUser.count,
+                playerName: topUser.name,
+                label: `${topUser.count}x`
+              };
+            }
+          }
+        }
+      }
+
+      setTopScores(scores);
+    } catch (err) {
+      console.error('Error fetching top scores:', err);
     }
-
-    setTeamName(teamData.name);
-
-    console.log('3. Fetching drills for coach_id:', teamData.coach_id);
-
-    // Fetch drills created by this team's coach
-    const { data, error } = await supabase
-      .from('drills')
-      .select('*')
-      .eq('created_by', teamData.coach_id)
-      .eq('is_active', true)
-      .order('sort_order', { ascending: true })
-      .order('created_at', { ascending: false });
-
-    console.log('4. Drills found:', data?.length || 0);
-    console.log('4. All drill data:', JSON.stringify(data, null, 2));
-    console.log('4. Drill names:', data?.map(d => d.name));
-    console.log('4. Fetch error:', error);
-
-    if (error) throw error;
-    setDrills(data || []);
-  } catch (err) {
-    console.error('Error fetching drills:', err);
-  } finally {
-    setLoading(false);
-  }
-};
+  };
 
   const fetchTodayCompletions = async () => {
     try {
       const today = new Date().toISOString().split('T')[0];
-      
+
       const { data, error } = await supabase
         .from('drill_completions_daily')
         .select('drill_id')
@@ -83,7 +169,7 @@ export default function DrillsList({ user, userProfile }) {
         .eq('completed_date', today);
 
       if (error) throw error;
-      
+
       const completedDrillIds = new Set(data.map(c => c.drill_id));
       setCompletedToday(completedDrillIds);
     } catch (err) {
@@ -99,7 +185,7 @@ export default function DrillsList({ user, userProfile }) {
       alert('⏰ You\'ve already completed this drill today! Come back tomorrow for more points.');
       return;
     }
-    
+
     router.push(`/player?drillId=${drill.id}`);
   };
 
@@ -151,28 +237,27 @@ export default function DrillsList({ user, userProfile }) {
           <div className="grid md:grid-cols-2 gap-4">
             {drills.map(drill => {
               const isCompletedToday = drill.daily_limit && completedToday.has(drill.id);
-              
+              const topScore = topScores[drill.id];
+
               return (
                 <button
                   key={drill.id}
                   onClick={() => startDrill(drill)}
                   disabled={isCompletedToday}
-                  className={`bg-gray-800 hover:bg-gray-750 border-2 rounded-xl p-6 text-left transition group ${
-                    isCompletedToday
+                  className={`bg-gray-800 hover:bg-gray-750 border-2 rounded-xl p-6 text-left transition group ${isCompletedToday
                       ? 'border-gray-600 opacity-60 cursor-not-allowed'
                       : 'border-gray-700 hover:border-blue-500'
-                  }`}
+                    }`}
                 >
                   <div className="flex items-start justify-between mb-3">
                     <h3 className="text-xl font-bold text-white group-hover:text-blue-400 transition">
                       {drill.name}
                     </h3>
                     {drill.daily_limit && (
-                      <span className={`text-xs px-2 py-1 rounded font-semibold ${
-                        isCompletedToday
+                      <span className={`text-xs px-2 py-1 rounded font-semibold ${isCompletedToday
                           ? 'bg-gray-600 text-gray-400'
                           : 'bg-yellow-600 text-white'
-                      }`}>
+                        }`}>
                         {isCompletedToday ? '✓ DONE TODAY' : '1/DAY'}
                       </span>
                     )}
@@ -182,11 +267,30 @@ export default function DrillsList({ user, userProfile }) {
                     <p className="text-gray-300 text-sm mb-4">{drill.description}</p>
                   )}
 
+                  {/* Top Score Display */}
+                  {topScore && (
+                    <div className="bg-gradient-to-r from-yellow-900/30 to-orange-900/30 border border-yellow-700/50 rounded-lg p-3 mb-4">
+                      <div className="flex items-center gap-2">
+                        <span className="text-yellow-400 text-lg">🏆</span>
+                        <div>
+                          <div className="text-yellow-200 text-xs font-semibold">
+                            {drill.type === 'stopwatch' ? 'FASTEST TIME' :
+                              drill.type === 'check' ? 'MOST COMPLETIONS' :
+                                'TOP SCORE'}
+                          </div>
+                          <div className="text-white font-bold">
+                            {topScore.label} - {topScore.playerName}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                   <div className="flex items-center gap-4 text-sm">
                     <span className="text-gray-400 capitalize">
-                      {drill.type === 'timer' && drill.duration ? `⏱️ ${drill.duration}s` : 
-                       drill.type === 'stopwatch' ? '⏱️ Stopwatch' :
-                       drill.type === 'check' ? '✓ Checkbox' : '🔢 Rep Counter'}
+                      {drill.type === 'timer' && drill.duration ? `⏱️ ${drill.duration}s` :
+                        drill.type === 'stopwatch' ? '⏱️ Stopwatch' :
+                          drill.type === 'check' ? '✓ Checkbox' : '🔢 Rep Counter'}
                     </span>
                     {drill.type !== 'check' && drill.type !== 'stopwatch' && (
                       <span className="text-blue-400 font-semibold">
