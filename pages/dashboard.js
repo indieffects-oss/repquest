@@ -11,12 +11,12 @@ export default function Dashboard({ user, userProfile }) {
   const [saving, setSaving] = useState(false);
   const [editingDrill, setEditingDrill] = useState(null);
   const [showLibrary, setShowLibrary] = useState(false);
-  
+
   // Library filters
   const [sportFilter, setSportFilter] = useState('all');
   const [tagFilter, setTagFilter] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
-  
+
   const [form, setForm] = useState({
     name: '',
     type: 'timer',
@@ -152,7 +152,7 @@ export default function Dashboard({ user, userProfile }) {
           .eq('created_by', user.id)
           .order('sort_order', { ascending: false })
           .limit(1);
-        
+
         const nextSortOrder = -1; // Always put new drills first
 
         const { error } = await supabase.from('drills').insert({
@@ -205,7 +205,7 @@ export default function Dashboard({ user, userProfile }) {
         .eq('created_by', user.id)
         .order('sort_order', { ascending: false })
         .limit(1);
-      
+
       const nextSortOrder = -1; // Put copied drills at top too
 
       // Copy ALL relevant fields including sport and tags
@@ -227,7 +227,7 @@ export default function Dashboard({ user, userProfile }) {
       });
 
       if (error) throw error;
-      
+
       alert('✅ Drill copied successfully! It\'s now available to your players.');
       fetchDrills();
     } catch (err) {
@@ -237,22 +237,22 @@ export default function Dashboard({ user, userProfile }) {
   };
 
   const handleDelete = async (drillId) => {
-  if (!confirm('Delete this drill? This cannot be undone.')) return;
+    if (!confirm('Delete this drill? This cannot be undone.')) return;
 
-  try {
-    await supabase.from('drill_results').delete().eq('drill_id', drillId);
-    await supabase.from('drill_completions_daily').delete().eq('drill_id', drillId);
-    
-    const { error } = await supabase.from('drills').delete().eq('id', drillId);
-    if (error) throw error;
-    
-    alert('Drill deleted');
-    fetchDrills();
-  } catch (err) {
-    console.error('Error deleting drill:', err);
-    alert('Failed to delete drill: ' + err.message);
-  }
-};
+    try {
+      await supabase.from('drill_results').delete().eq('drill_id', drillId);
+      await supabase.from('drill_completions_daily').delete().eq('drill_id', drillId);
+
+      const { error } = await supabase.from('drills').delete().eq('id', drillId);
+      if (error) throw error;
+
+      alert('Drill deleted');
+      fetchDrills();
+    } catch (err) {
+      console.error('Error deleting drill:', err);
+      alert('Failed to delete drill: ' + err.message);
+    }
+  };
 
   const moveDrill = async (drill, direction) => {
     const currentIndex = drills.findIndex(d => d.id === drill.id);
@@ -264,17 +264,29 @@ export default function Dashboard({ user, userProfile }) {
     const swapDrill = drills[swapIndex];
 
     try {
+      // Use a temporary large number to avoid conflicts
+      const tempSortOrder = 999999;
+
+      // Step 1: Set current drill to temp value
       await supabase.from('drills')
-        .update({ sort_order: swapDrill.sort_order })
+        .update({ sort_order: tempSortOrder })
         .eq('id', currentDrill.id);
 
+      // Step 2: Set swap drill to current's old value
       await supabase.from('drills')
         .update({ sort_order: currentDrill.sort_order })
         .eq('id', swapDrill.id);
 
-      fetchDrills();
+      // Step 3: Set current drill to swap's old value
+      await supabase.from('drills')
+        .update({ sort_order: swapDrill.sort_order })
+        .eq('id', currentDrill.id);
+
+      // Refresh the list
+      await fetchDrills();
     } catch (err) {
       console.error('Error reordering drills:', err);
+      alert('Failed to reorder drills. Please refresh the page and try again.');
     }
   };
 
@@ -339,7 +351,7 @@ export default function Dashboard({ user, userProfile }) {
             <h1 className="text-2xl sm:text-3xl font-bold text-white mb-2">Drill Management</h1>
             <p className="text-gray-400 text-sm sm:text-base">Create and organize drills for your team</p>
           </div>
-          
+
           <button
             onClick={() => setShowLibrary(!showLibrary)}
             className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg font-semibold transition flex items-center gap-2"
@@ -488,7 +500,7 @@ export default function Dashboard({ user, userProfile }) {
                       </div>
 
                       {drill.description && (
-                        <p className="text-gray-300 text-sm mb-3">{drill.description}</p>
+                        <p className="text-gray-300 text-sm mb-3" style={{ whiteSpace: 'pre-line' }}>{drill.description}</p>
                       )}
 
                       <div className="flex flex-wrap gap-2 mb-3">
@@ -597,11 +609,10 @@ export default function Dashboard({ user, userProfile }) {
                       key={tag}
                       type="button"
                       onClick={() => toggleTag(tag)}
-                      className={`px-3 py-1 rounded-full text-xs font-semibold transition ${
-                        form.tags.includes(tag)
+                      className={`px-3 py-1 rounded-full text-xs font-semibold transition ${form.tags.includes(tag)
                           ? 'bg-green-600 text-white'
                           : 'bg-gray-600 text-gray-300 hover:bg-gray-500'
-                      }`}
+                        }`}
                     >
                       {form.tags.includes(tag) && '✓ '}{tag}
                     </button>
@@ -726,7 +737,7 @@ export default function Dashboard({ user, userProfile }) {
               >
                 {saving ? 'Saving...' : editingDrill ? 'Update Drill' : 'Create Drill'}
               </button>
-              
+
               {editingDrill && (
                 <button
                   type="button"
@@ -751,11 +762,10 @@ export default function Dashboard({ user, userProfile }) {
               {drills.map((drill, index) => (
                 <div
                   key={drill.id}
-                  className={`p-4 rounded-lg border-2 transition ${
-                    drill.is_active === false
+                  className={`p-4 rounded-lg border-2 transition ${drill.is_active === false
                       ? 'bg-gray-700/50 border-gray-600 opacity-60'
                       : 'bg-gray-700 border-gray-600 hover:border-blue-500'
-                  }`}
+                    }`}
                 >
                   <div className="flex items-start gap-3">
                     {/* Reorder Buttons */}
@@ -795,7 +805,7 @@ export default function Dashboard({ user, userProfile }) {
                             )}
                           </h3>
                           <p className="text-gray-400 text-sm">{getDrillTypeLabel(drill.type)}</p>
-                          
+
                           {/* Sport and Tags Display */}
                           <div className="flex flex-wrap gap-1 mt-2">
                             {drill.sport && drill.sport !== 'Other' && (
@@ -815,7 +825,7 @@ export default function Dashboard({ user, userProfile }) {
                             )}
                           </div>
                         </div>
-                        
+
                         <div className="flex gap-2">
                           <button
                             onClick={() => router.push(`/player?drillId=${drill.id}`)}
@@ -824,14 +834,14 @@ export default function Dashboard({ user, userProfile }) {
                           >
                             Test
                           </button>
-                          
+
                           <button
                             onClick={() => handleEdit(drill)}
                             className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-sm font-semibold transition"
                           >
                             Edit
                           </button>
-                          
+
                           <button
                             onClick={() => handleDelete(drill.id)}
                             className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-sm font-semibold transition"
@@ -842,7 +852,7 @@ export default function Dashboard({ user, userProfile }) {
                       </div>
 
                       {drill.description && (
-                        <p className="text-gray-300 text-sm mb-2">{drill.description}</p>
+                        <p className="text-gray-300 text-sm mb-2" style={{ whiteSpace: 'pre-line' }}>{drill.description}</p>
                       )}
 
                       <div className="flex flex-wrap gap-3 text-sm text-gray-400">

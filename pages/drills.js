@@ -264,7 +264,7 @@ export default function DrillsList({ user, userProfile }) {
                   </div>
 
                   {drill.description && (
-                    <p className="text-gray-300 text-sm mb-4">{drill.description}</p>
+                    <p className="text-gray-300 text-sm mb-4" style={{ whiteSpace: 'pre-line' }}>{drill.description}</p>
                   )}
 
                   {/* Top Score Display */}
