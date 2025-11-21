@@ -500,7 +500,7 @@ export default function Dashboard({ user, userProfile }) {
                       </div>
 
                       {drill.description && (
-                        <p className="text-gray-300 text-sm mb-3" style={{ whiteSpace: 'pre-line' }}>{drill.description}</p>
+                        <p className="text-gray-300 text-sm mb-3 line-clamp-2" style={{ whiteSpace: 'pre-line' }}>{drill.description}</p>
                       )}
 
                       <div className="flex flex-wrap gap-2 mb-3">
@@ -852,7 +852,7 @@ export default function Dashboard({ user, userProfile }) {
                       </div>
 
                       {drill.description && (
-                        <p className="text-gray-300 text-sm mb-2" style={{ whiteSpace: 'pre-line' }}>{drill.description}</p>
+                        <p className="text-gray-300 text-sm mb-2 line-clamp-2" style={{ whiteSpace: 'pre-line' }}>{drill.description}</p>
                       )}
 
                       <div className="flex flex-wrap gap-3 text-sm text-gray-400">
