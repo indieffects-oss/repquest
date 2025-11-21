@@ -34,6 +34,7 @@ export default function PlayerDrill({ user, userProfile }) {
   const countdownBeep = useRef(null);
   const startBeep = useRef(null);
   const endBuzzer = useRef(null);
+  const wakeLock = useRef(null);
 
   useEffect(() => {
     countdownBeep.current = new Audio('/sounds/beep.wav');
@@ -52,6 +53,68 @@ export default function PlayerDrill({ user, userProfile }) {
       clearInterval(stopwatchInterval.current);
     };
   }, [drillId, user]);
+
+  // Add this useEffect to handle wake lock
+  useEffect(() => {
+    // Request wake lock when drill starts
+    const requestWakeLock = async () => {
+      if ('wakeLock' in navigator && (running || countdown > 0)) {
+        try {
+          wakeLock.current = await navigator.wakeLock.request('screen');
+          console.log('Screen wake lock activated');
+
+          wakeLock.current.addEventListener('release', () => {
+            console.log('Screen wake lock released');
+          });
+        } catch (err) {
+          console.error('Wake lock error:', err);
+        }
+      }
+    };
+
+    // Release wake lock when drill stops
+    const releaseWakeLock = async () => {
+      if (wakeLock.current) {
+        try {
+          await wakeLock.current.release();
+          wakeLock.current = null;
+        } catch (err) {
+          console.error('Wake lock release error:', err);
+        }
+      }
+    };
+
+    if (running || countdown > 0) {
+      requestWakeLock();
+    } else {
+      releaseWakeLock();
+    }
+
+    // Cleanup on unmount
+    return () => {
+      releaseWakeLock();
+    };
+  }, [running, countdown]);
+
+  // Re-acquire wake lock when page becomes visible again
+  useEffect(() => {
+    const handleVisibilityChange = async () => {
+      if (wakeLock.current !== null && document.visibilityState === 'visible' && running) {
+        try {
+          wakeLock.current = await navigator.wakeLock.request('screen');
+        } catch (err) {
+          console.error('Wake lock reacquisition error:', err);
+        }
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [running]);
+  
 
   const fetchStats = async () => {
     try {
