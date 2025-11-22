@@ -1,4 +1,4 @@
-// pages/teams.js - v0.45 with custom invite emails and image compression
+// pages/teams.js - v0.46 with Team Invite Links
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import { supabase } from '../lib/supabaseClient';
@@ -23,6 +23,10 @@ export default function Teams({ user, userProfile }) {
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [editingTeamName, setEditingTeamName] = useState(null);
   const [sendingInvite, setSendingInvite] = useState(false);
+
+  // New state for team invite links
+  const [teamInviteLinks, setTeamInviteLinks] = useState({});
+  const [loadingTeamLink, setLoadingTeamLink] = useState({});
 
   const sports = [
     'Basketball', 'Soccer', 'Baseball', 'Football', 'Volleyball',
@@ -54,10 +58,135 @@ export default function Teams({ user, userProfile }) {
 
       if (error) throw error;
       setTeams(data || []);
+
+      // Fetch team invite links for each team
+      if (data && data.length > 0) {
+        data.forEach(team => {
+          fetchTeamInviteLink(team.id);
+        });
+      }
     } catch (err) {
       console.error('Error fetching teams:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // NEW: Fetch or create team invite link
+  const fetchTeamInviteLink = async (teamId) => {
+    try {
+      // Check if team invite already exists
+      const { data: existingInvite, error: fetchError } = await supabase
+        .from('invites')
+        .select('invite_code')
+        .eq('team_id', teamId)
+        .eq('invite_type', 'team')
+        .eq('used', false)
+        .maybeSingle();
+
+      if (fetchError) throw fetchError;
+
+      if (existingInvite) {
+        // Team invite exists, use it
+        const link = `${window.location.origin}/invite/${existingInvite.invite_code}`;
+        setTeamInviteLinks(prev => ({ ...prev, [teamId]: link }));
+      } else {
+        // No team invite exists yet, will create on demand
+        setTeamInviteLinks(prev => ({ ...prev, [teamId]: null }));
+      }
+    } catch (err) {
+      console.error('Error fetching team invite link:', err);
+    }
+  };
+
+  // NEW: Generate team invite link (called when user clicks to reveal it)
+  const generateTeamInviteLink = async (teamId) => {
+    setLoadingTeamLink(prev => ({ ...prev, [teamId]: true }));
+
+    try {
+      // Check if one already exists first
+      const { data: existingInvite } = await supabase
+        .from('invites')
+        .select('invite_code')
+        .eq('team_id', teamId)
+        .eq('invite_type', 'team')
+        .eq('used', false)
+        .maybeSingle();
+
+      if (existingInvite) {
+        const link = `${window.location.origin}/invite/${existingInvite.invite_code}`;
+        setTeamInviteLinks(prev => ({ ...prev, [teamId]: link }));
+        return;
+      }
+
+      // Create new team invite
+      const inviteCode = 'team-' + Math.random().toString(36).substring(2, 12);
+      const expiresAt = new Date();
+      expiresAt.setFullYear(expiresAt.getFullYear() + 1); // 1 year expiry for team links
+
+      const { error } = await supabase.from('invites').insert({
+        team_id: teamId,
+        email: null, // Team invites don't require specific email
+        invite_code: inviteCode,
+        expires_at: expiresAt.toISOString(),
+        used: false,
+        invite_type: 'team',
+        max_uses: null, // Unlimited uses
+        uses_remaining: null // Unlimited
+      });
+
+      if (error) throw error;
+
+      const inviteLink = `${window.location.origin}/invite/${inviteCode}`;
+      setTeamInviteLinks(prev => ({ ...prev, [teamId]: inviteLink }));
+    } catch (err) {
+      console.error('Error generating team invite link:', err);
+      alert('Failed to generate team link: ' + err.message);
+    } finally {
+      setLoadingTeamLink(prev => ({ ...prev, [teamId]: false }));
+    }
+  };
+
+  // NEW: Regenerate team invite link (deactivates old one)
+  const regenerateTeamInviteLink = async (teamId) => {
+    if (!confirm('This will invalidate the old team link. Continue?')) return;
+
+    setLoadingTeamLink(prev => ({ ...prev, [teamId]: true }));
+
+    try {
+      // Deactivate old team invite
+      await supabase
+        .from('invites')
+        .update({ used: true })
+        .eq('team_id', teamId)
+        .eq('invite_type', 'team');
+
+      // Create new one
+      const inviteCode = 'team-' + Math.random().toString(36).substring(2, 12);
+      const expiresAt = new Date();
+      expiresAt.setFullYear(expiresAt.getFullYear() + 1);
+
+      const { error } = await supabase.from('invites').insert({
+        team_id: teamId,
+        email: null,
+        invite_code: inviteCode,
+        expires_at: expiresAt.toISOString(),
+        used: false,
+        invite_type: 'team',
+        max_uses: null,
+        uses_remaining: null
+      });
+
+      if (error) throw error;
+
+      const inviteLink = `${window.location.origin}/invite/${inviteCode}`;
+      setTeamInviteLinks(prev => ({ ...prev, [teamId]: inviteLink }));
+      alert('New team link generated! Old link is now invalid.');
+    } catch (err) {
+      console.error('Error regenerating team invite link:', err);
+      alert('Failed to regenerate link: ' + err.message);
+    } finally {
+      setLoadingTeamLink(prev => ({ ...prev, [teamId]: false }));
     }
   };
 
@@ -340,7 +469,8 @@ export default function Teams({ user, userProfile }) {
         invite_code: inviteCode,
         expires_at: expiresAt.toISOString(),
         used: false,
-        coach_message: inviteMessage.trim() || null
+        coach_message: inviteMessage.trim() || null,
+        invite_type: 'email' // Email-specific invite
       });
 
       if (error) throw error;
@@ -413,7 +543,7 @@ export default function Teams({ user, userProfile }) {
                   type="text"
                   value={newTeam.name}
                   onChange={(e) => setNewTeam({ ...newTeam, name: e.target.value })}
-                  placeholder="e.g., Warriors U12, Lakers Varsity"
+                  placeholder="e.g., Hawks U12"
                   className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
                 />
               </div>
@@ -425,7 +555,7 @@ export default function Teams({ user, userProfile }) {
                   onChange={(e) => setNewTeam({ ...newTeam, sport: e.target.value })}
                   className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:border-blue-500"
                 >
-                  <option value="">Select a sport...</option>
+                  <option value="">Select sport...</option>
                   {sports.map(sport => (
                     <option key={sport} value={sport}>{sport}</option>
                   ))}
@@ -439,7 +569,7 @@ export default function Teams({ user, userProfile }) {
                     type="color"
                     value={newTeam.primary_color}
                     onChange={(e) => setNewTeam({ ...newTeam, primary_color: e.target.value })}
-                    className="w-full h-12 rounded-lg cursor-pointer"
+                    className="w-full h-10 rounded cursor-pointer"
                   />
                 </div>
                 <div>
@@ -448,14 +578,14 @@ export default function Teams({ user, userProfile }) {
                     type="color"
                     value={newTeam.secondary_color}
                     onChange={(e) => setNewTeam({ ...newTeam, secondary_color: e.target.value })}
-                    className="w-full h-12 rounded-lg cursor-pointer"
+                    className="w-full h-10 rounded cursor-pointer"
                   />
                 </div>
               </div>
 
               <button
                 onClick={createTeam}
-                className="w-full bg-green-600 hover:bg-green-700 text-white font-semibold py-3 rounded-lg transition"
+                className="w-full bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg font-semibold transition"
               >
                 Create Team
               </button>
@@ -463,53 +593,41 @@ export default function Teams({ user, userProfile }) {
           </div>
         )}
 
-        {/* Team Cards */}
+        {/* Teams List */}
         {teams.length === 0 ? (
-          <div className="bg-gray-800 rounded-xl p-8 border border-gray-700 text-center">
-            <p className="text-gray-400 mb-4">You haven't created any teams yet.</p>
-            <button
-              onClick={() => setShowCreateForm(true)}
-              className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg font-semibold transition"
-            >
-              Create Your First Team
-            </button>
+          <div className="bg-gray-800 rounded-xl p-12 border border-gray-700 text-center">
+            <p className="text-gray-400 text-lg">No teams yet. Create your first team above!</p>
           </div>
         ) : (
-          <div className="space-y-6">
+          <div className="grid gap-6">
             {teams.map(team => (
               <div key={team.id} className="bg-gray-800 rounded-xl p-6 border border-gray-700">
-                <div className="flex items-start gap-4 mb-4">
-                  {/* Team Logo */}
-                  {team.logo_url ? (
-                    <div className="relative group">
-                      <img
-                        src={team.logo_url}
-                        alt={`${team.name} logo`}
-                        className="w-16 h-16 rounded-lg object-cover"
-                      />
-                      <button
-                        onClick={() => removeLogo(team.id, team.logo_url)}
-                        className="absolute -top-2 -right-2 bg-red-600 hover:bg-red-700 text-white w-6 h-6 rounded-full text-xs opacity-0 group-hover:opacity-100 transition"
-                      >
-                        ✕
-                      </button>
-                    </div>
-                  ) : (
-                    <label className="w-16 h-16 rounded-lg bg-gray-700 border-2 border-dashed border-gray-600 flex items-center justify-center cursor-pointer hover:border-blue-500 hover:bg-gray-600 transition">
-                      <input
-                        type="file"
-                        accept="image/*"
-                        onChange={(e) => handleLogoUpload(e, team.id)}
-                        className="hidden"
-                        disabled={uploadingLogo}
-                      />
-                      <span className="text-2xl">{uploadingLogo ? '⏳' : '📷'}</span>
-                    </label>
-                  )}
+                {/* Team Logo Section */}
+                <div className="flex items-start justify-between mb-4 pb-4 border-b border-gray-700">
+                  <div className="flex items-center gap-4">
+                    {team.logo_url ? (
+                      <div className="relative">
+                        <img
+                          src={team.logo_url}
+                          alt={team.name}
+                          className="w-20 h-20 object-cover rounded-lg border-2 border-gray-600"
+                        />
+                        <button
+                          onClick={() => removeLogo(team.id, team.logo_url)}
+                          className="absolute -top-2 -right-2 bg-red-600 hover:bg-red-700 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs transition"
+                          title="Remove logo"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="w-20 h-20 bg-gray-700 rounded-lg border-2 border-dashed border-gray-600 flex items-center justify-center">
+                        <span className="text-gray-500 text-xs">No Logo</span>
+                      </div>
+                    )}
 
-                  <div className="flex-1">
                     {editingTeamName === team.id ? (
-                      <div className="flex items-center gap-2 mb-1">
+                      <div>
                         <input
                           type="text"
                           value={team.name}
@@ -519,50 +637,67 @@ export default function Teams({ user, userProfile }) {
                             );
                             setTeams(updated);
                           }}
-                          className="flex-1 px-3 py-2 bg-gray-700 border border-gray-600 rounded text-white text-lg font-bold focus:outline-none focus:border-blue-500"
+                          className="text-xl font-bold text-white bg-gray-700 px-3 py-1 rounded border border-gray-600 mb-2"
                         />
-                        <button
-                          onClick={() => updateTeamName(team.id)}
-                          className="bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded text-sm"
-                        >
-                          Save
-                        </button>
-                        <button
-                          onClick={() => {
-                            setEditingTeamName(null);
-                            fetchTeams();
-                          }}
-                          className="bg-gray-600 hover:bg-gray-500 text-white px-3 py-1 rounded text-sm"
-                        >
-                          Cancel
-                        </button>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => updateTeamName(team.id)}
+                            className="bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded text-sm"
+                          >
+                            Save
+                          </button>
+                          <button
+                            onClick={() => {
+                              setEditingTeamName(null);
+                              fetchTeams();
+                            }}
+                            className="bg-gray-600 hover:bg-gray-500 text-white px-3 py-1 rounded text-sm"
+                          >
+                            Cancel
+                          </button>
+                        </div>
                       </div>
                     ) : (
-                      <div className="flex items-center gap-2 mb-1">
-                        <h3 className="text-xl font-bold text-white">{team.name}</h3>
-                        <button
-                          onClick={() => setEditingTeamName(team.id)}
-                          className="text-blue-400 hover:text-blue-300 text-sm"
-                          title="Edit team name"
-                        >
-                          ✏️
-                        </button>
+                      <div>
+                        <div className="flex items-center gap-2 mb-1">
+                          <h3 className="text-xl font-bold text-white">{team.name}</h3>
+                          <button
+                            onClick={() => setEditingTeamName(team.id)}
+                            className="text-blue-400 hover:text-blue-300 text-sm"
+                            title="Edit team name"
+                          >
+                            ✏️
+                          </button>
+                        </div>
+                        {team.sport && (
+                          <p className="text-gray-400 text-sm">{team.sport}</p>
+                        )}
                       </div>
-                    )}
-                    {team.sport && (
-                      <p className="text-gray-400 text-sm">{team.sport}</p>
                     )}
                   </div>
 
-                  <span
-                    className="px-3 py-1 rounded-full text-sm font-semibold"
-                    style={{
-                      backgroundColor: team.primary_color + '20',
-                      color: team.primary_color
-                    }}
-                  >
-                    {team.team_members?.length || 0} players
-                  </span>
+                  <div className="flex flex-col gap-2">
+                    <label className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg cursor-pointer text-sm font-semibold transition text-center">
+                      {uploadingLogo ? 'Uploading...' : team.logo_url ? 'Change Logo' : 'Upload Logo'}
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={(e) => handleLogoUpload(e, team.id)}
+                        className="hidden"
+                        disabled={uploadingLogo}
+                      />
+                    </label>
+
+                    <span
+                      className="px-3 py-2 rounded-lg text-sm font-semibold text-center"
+                      style={{
+                        backgroundColor: team.primary_color + '20',
+                        color: team.primary_color
+                      }}
+                    >
+                      {team.team_members?.length || 0} players
+                    </span>
+                  </div>
                 </div>
 
                 {/* Color Customization */}
@@ -659,11 +794,58 @@ export default function Teams({ user, userProfile }) {
                   </div>
                 )}
 
-                {/* Add Player Section - WITH MESSAGE FIELD */}
+                {/* NEW: Team Invite Link Section */}
+                <div className="mb-4 border-t border-gray-700 pt-4">
+                  <h4 className="text-sm text-gray-400 mb-2">🔗 Team Invite Link:</h4>
+                  <div className="bg-purple-900/20 border border-purple-700/50 rounded-lg p-3 mb-3">
+                    <p className="text-xs text-purple-300 mb-2">
+                      💡 <strong>Share this link with your entire team!</strong> Anyone with this link can join the team (no email required).
+                    </p>
+
+                    {teamInviteLinks[team.id] ? (
+                      <div className="space-y-2">
+                        <div className="flex gap-2">
+                          <input
+                            type="text"
+                            value={teamInviteLinks[team.id]}
+                            readOnly
+                            className="flex-1 px-3 py-2 bg-gray-800 border border-gray-600 rounded text-white text-sm"
+                          />
+                          <button
+                            onClick={() => {
+                              navigator.clipboard.writeText(teamInviteLinks[team.id]);
+                              alert('Team link copied to clipboard!');
+                            }}
+                            className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded text-sm font-semibold transition whitespace-nowrap"
+                          >
+                            📋 Copy Link
+                          </button>
+                        </div>
+                        <button
+                          onClick={() => regenerateTeamInviteLink(team.id)}
+                          disabled={loadingTeamLink[team.id]}
+                          className="text-xs text-orange-400 hover:text-orange-300 underline"
+                        >
+                          {loadingTeamLink[team.id] ? 'Regenerating...' : '🔄 Regenerate Link (invalidates old link)'}
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => generateTeamInviteLink(team.id)}
+                        disabled={loadingTeamLink[team.id]}
+                        className="w-full bg-purple-600 hover:bg-purple-700 disabled:bg-gray-600 text-white px-4 py-2 rounded-lg text-sm font-semibold transition"
+                      >
+                        {loadingTeamLink[team.id] ? 'Generating...' : '🔗 Generate Team Link'}
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Email Invite Section */}
                 <div className="border-t border-gray-700 pt-4">
-                  <h4 className="text-sm text-gray-400 mb-2">Invite Player:</h4>
+                  <h4 className="text-sm text-gray-400 mb-2">📧 Invite Specific Player by Email:</h4>
                   <div className="bg-blue-900/20 border border-blue-700/50 rounded-lg p-3 mb-3 text-xs text-blue-300">
-                    💡 <strong>Tip:</strong> Enter player's email. If they have an account, they'll be added instantly. If not, they'll receive an invite email with your message!
+                    💡 <strong>Tip:</strong> Enter player's email. If they have an account, they'll be added instantly. If not, they'll receive a personalized invite email!
                   </div>
 
                   <div className="space-y-3">
@@ -692,9 +874,9 @@ export default function Teams({ user, userProfile }) {
                     <button
                       onClick={() => addPlayerToTeam(team.id)}
                       disabled={sendingInvite}
-                      className="w-full bg-green-600 hover:bg-green-700 disabled:bg-gray-600 text-white px-4 py-2 rounded-lg text-sm font-semibold transition"
+                      className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 text-white px-4 py-2 rounded-lg text-sm font-semibold transition"
                     >
-                      {sendingInvite ? 'Sending...' : 'Send Invite'}
+                      {sendingInvite ? 'Sending...' : 'Send Email Invite'}
                     </button>
                   </div>
 

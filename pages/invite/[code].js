@@ -1,4 +1,4 @@
-// pages/invite/[code].js
+// pages/invite/[code].js - Updated to handle both email and team invites
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import { supabase } from '../../lib/supabaseClient';
@@ -11,8 +11,10 @@ export default function AcceptInvite() {
   const [team, setTeam] = useState(null);
   const [error, setError] = useState('');
   const [password, setPassword] = useState('');
+  const [email, setEmail] = useState(''); // For team invites
   const [displayName, setDisplayName] = useState('');
   const [processing, setProcessing] = useState(false);
+  const [isTeamInvite, setIsTeamInvite] = useState(false);
 
   useEffect(() => {
     if (!code) return;
@@ -29,16 +31,29 @@ export default function AcceptInvite() {
 
       if (inviteError) throw new Error('Invalid invite link');
 
-      if (inviteData.used) {
+      if (inviteData.used && inviteData.invite_type === 'email') {
         throw new Error('This invite has already been used');
+      }
+
+      if (inviteData.used && inviteData.invite_type === 'team') {
+        throw new Error('This team invite link has been disabled');
       }
 
       if (new Date(inviteData.expires_at) < new Date()) {
         throw new Error('This invite has expired');
       }
 
+      // Check if it's a team invite (no specific email)
+      const isTeam = inviteData.invite_type === 'team' || !inviteData.email;
+      setIsTeamInvite(isTeam);
+
       setInvite(inviteData);
       setTeam(inviteData.teams);
+
+      // If it's an email invite, pre-fill the email
+      if (!isTeam && inviteData.email) {
+        setEmail(inviteData.email);
+      }
     } catch (err) {
       setError(err.message);
     } finally {
@@ -52,6 +67,18 @@ export default function AcceptInvite() {
       return;
     }
 
+    // For team invites, validate email
+    if (isTeamInvite) {
+      if (!email.trim()) {
+        alert('Please enter your email address');
+        return;
+      }
+      if (!email.includes('@')) {
+        alert('Please enter a valid email address');
+        return;
+      }
+    }
+
     if (password.length < 6) {
       alert('Password must be at least 6 characters');
       return;
@@ -60,9 +87,26 @@ export default function AcceptInvite() {
     setProcessing(true);
 
     try {
+      const userEmail = isTeamInvite ? email.trim().toLowerCase() : invite.email;
+
+      // Check if user already exists (important for team invites)
+      if (isTeamInvite) {
+        const { data: existingUser } = await supabase
+          .from('users')
+          .select('id, email')
+          .eq('email', userEmail)
+          .maybeSingle();
+
+        if (existingUser) {
+          alert('An account with this email already exists. Please login instead.');
+          setProcessing(false);
+          return;
+        }
+      }
+
       // Sign up the user
       const { data: authData, error: signUpError } = await supabase.auth.signUp({
-        email: invite.email,
+        email: userEmail,
         password: password
       });
 
@@ -73,10 +117,11 @@ export default function AcceptInvite() {
         .from('users')
         .insert({
           id: authData.user.id,
-          email: invite.email,
+          email: userEmail,
           display_name: displayName.trim(),
           role: 'player',
-          total_points: 0
+          total_points: 0,
+          active_team_id: invite.team_id
         });
 
       if (profileError) throw profileError;
@@ -91,11 +136,13 @@ export default function AcceptInvite() {
 
       if (teamError) throw teamError;
 
-      // Mark invite as used
-      await supabase
-        .from('invites')
-        .update({ used: true })
-        .eq('id', invite.id);
+      // Mark invite as used (only for email invites)
+      if (!isTeamInvite) {
+        await supabase
+          .from('invites')
+          .update({ used: true })
+          .eq('id', invite.id);
+      }
 
       alert(`Welcome to ${team.name}! 🎉`);
       router.push('/drills');
@@ -137,17 +184,31 @@ export default function AcceptInvite() {
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-gray-900 flex items-center justify-center p-4">
       <div className="bg-gray-800 rounded-2xl shadow-2xl p-8 w-full max-w-md border border-gray-700">
         <div className="text-center mb-6">
-          <img 
-            src="/images/RepQuestAlpha.png" 
-            alt="RepQuest" 
-            className="w-20 h-20 mx-auto mb-4"
-          />
+          {team?.logo_url ? (
+            <img
+              src={team.logo_url}
+              alt={team.name}
+              className="w-20 h-20 mx-auto mb-4 rounded-lg object-cover"
+            />
+          ) : (
+            <img
+              src="/images/RepQuestAlpha.png"
+              alt="RepQuest"
+              className="w-20 h-20 mx-auto mb-4"
+            />
+          )}
           <h1 className="text-2xl font-bold text-white mb-2">
             Join {team?.name}!
           </h1>
-          <p className="text-gray-400 text-sm">
-            You've been invited to join the team
-          </p>
+          {isTeamInvite ? (
+            <p className="text-gray-400 text-sm">
+              You've been invited to join the team
+            </p>
+          ) : (
+            <p className="text-gray-400 text-sm">
+              Create your account to join
+            </p>
+          )}
           {team?.sport && (
             <span className="inline-block mt-2 bg-blue-900 text-blue-300 px-3 py-1 rounded-full text-sm">
               {team.sport}
@@ -171,14 +232,22 @@ export default function AcceptInvite() {
 
           <div>
             <label className="block text-gray-300 text-sm mb-2">
-              Email
+              Email {isTeamInvite ? '*' : ''}
             </label>
             <input
               type="email"
-              value={invite?.email || ''}
-              disabled
-              className="w-full px-4 py-3 bg-gray-600 border border-gray-600 rounded-lg text-gray-400"
+              value={email}
+              onChange={(e) => isTeamInvite && setEmail(e.target.value)}
+              disabled={!isTeamInvite}
+              placeholder={isTeamInvite ? "your.email@example.com" : ""}
+              className={`w-full px-4 py-3 border border-gray-600 rounded-lg ${isTeamInvite
+                  ? 'bg-gray-700 text-white placeholder-gray-400 focus:outline-none focus:border-blue-500'
+                  : 'bg-gray-600 text-gray-400'
+                }`}
             />
+            {isTeamInvite && (
+              <p className="text-xs text-gray-500 mt-1">Enter your email address</p>
+            )}
           </div>
 
           <div>
@@ -198,11 +267,17 @@ export default function AcceptInvite() {
 
           <button
             onClick={acceptInvite}
-            disabled={processing || !displayName || !password}
+            disabled={processing || !displayName || !password || (isTeamInvite && !email)}
             className="w-full bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-semibold py-3 rounded-lg transition"
           >
             {processing ? 'Joining...' : 'Accept Invite & Join Team'}
           </button>
+
+          {isTeamInvite && (
+            <p className="text-xs text-center text-gray-500 mt-2">
+              Already have an account? <a href="/" className="text-blue-400 hover:text-blue-300">Login here</a>
+            </p>
+          )}
         </div>
       </div>
     </div>
