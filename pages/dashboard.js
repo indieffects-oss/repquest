@@ -100,7 +100,7 @@ export default function Dashboard({ user, userProfile }) {
         return;
       }
 
-      // Fetch ALL public drills from other coaches (regardless of team_id)
+      // Fetch ALL public drills (including from this coach's other teams)
       const { data, error } = await supabase
         .from('drills')
         .select(`
@@ -108,13 +108,25 @@ export default function Dashboard({ user, userProfile }) {
           creator:users!created_by (display_name, email)
         `)
         .eq('is_public', true)
-        .neq('created_by', user.id)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
 
-      console.log(`Loaded ${data?.length || 0} library drills`);
-      setLibraryDrills(data || []);
+      // Filter out drills from the CURRENT team
+      // Keep drills from: other coaches OR this coach's other teams
+      const filteredData = (data || []).filter(drill => {
+        // If from another coach, always include
+        if (drill.created_by !== user.id) return true;
+
+        // If from this coach but different team, include
+        if (drill.team_id !== userProfile?.active_team_id) return true;
+
+        // If from this coach AND current team, exclude (it's in "Your Drills")
+        return false;
+      });
+
+      console.log(`Loaded ${filteredData.length} library drills (${data?.length || 0} total public)`);
+      setLibraryDrills(filteredData);
     } catch (err) {
       console.error('Error fetching library drills:', err);
       setLibraryDrills([]); // Set empty array on error to prevent crashes
