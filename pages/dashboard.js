@@ -100,6 +100,7 @@ export default function Dashboard({ user, userProfile }) {
         return;
       }
 
+      // Fetch ALL public drills from other coaches (regardless of team_id)
       const { data, error } = await supabase
         .from('drills')
         .select(`
@@ -111,9 +112,12 @@ export default function Dashboard({ user, userProfile }) {
         .order('created_at', { ascending: false });
 
       if (error) throw error;
+
+      console.log(`Loaded ${data?.length || 0} library drills`);
       setLibraryDrills(data || []);
     } catch (err) {
       console.error('Error fetching library drills:', err);
+      setLibraryDrills([]); // Set empty array on error to prevent crashes
     }
   };
 
