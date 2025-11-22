@@ -1,34 +1,49 @@
-// components/Navbar.js - v0.44 with fixed logout redirect
+// components/Navbar.js - v0.48 with Fixed Team Switching
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { supabase } from '../lib/supabaseClient';
 import { useState, useEffect } from 'react';
 
-export default function Navbar({ user, userProfile }) {
+export default function Navbar({ user, userProfile, onProfileUpdate }) {
   const router = useRouter();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [myTeams, setMyTeams] = useState([]);
   const [switchingTeam, setSwitchingTeam] = useState(false);
 
   useEffect(() => {
-    if (userProfile?.role === 'player' && user) {
+    if (user && userProfile) {
       fetchMyTeams();
     }
   }, [userProfile, user]);
 
   const fetchMyTeams = async () => {
     try {
-      const { data, error } = await supabase
-        .from('team_members')
-        .select(`
-          team_id,
-          teams (id, name, sport)
-        `)
-        .eq('user_id', user.id);
+      let teams = [];
 
-      if (error) throw error;
+      if (userProfile.role === 'player') {
+        // Players: Get teams they're members of
+        const { data, error } = await supabase
+          .from('team_members')
+          .select(`
+            team_id,
+            teams (id, name, sport)
+          `)
+          .eq('user_id', user.id);
 
-      const teams = data.map(tm => tm.teams).filter(Boolean);
+        if (error) throw error;
+        teams = data.map(tm => tm.teams).filter(Boolean);
+      } else if (userProfile.role === 'coach') {
+        // Coaches: Get teams they own
+        const { data, error } = await supabase
+          .from('teams')
+          .select('id, name, sport')
+          .eq('coach_id', user.id)
+          .order('created_at', { ascending: true });
+
+        if (error) throw error;
+        teams = data || [];
+      }
+
       setMyTeams(teams);
     } catch (err) {
       console.error('Error fetching teams:', err);
@@ -47,11 +62,17 @@ export default function Navbar({ user, userProfile }) {
 
       if (error) throw error;
 
-      // Reload the page to refresh all data
-      window.location.reload();
+      // Use parent's refresh function to avoid full page reload
+      if (onProfileUpdate) {
+        await onProfileUpdate();
+      } else {
+        // Fallback to reload if no callback provided
+        window.location.reload();
+      }
     } catch (err) {
       console.error('Error switching team:', err);
       alert('Failed to switch team');
+    } finally {
       setSwitchingTeam(false);
     }
   };
@@ -100,8 +121,8 @@ export default function Navbar({ user, userProfile }) {
                 <Link
                   href="/dashboard"
                   className={`px-4 py-2 rounded-lg transition ${isActive('/dashboard')
-                      ? 'bg-white/20 text-white backdrop-blur-sm'
-                      : 'text-white/90 hover:bg-white/10'
+                    ? 'bg-white/20 text-white backdrop-blur-sm'
+                    : 'text-white/90 hover:bg-white/10'
                     }`}
                 >
                   Drills
@@ -118,8 +139,8 @@ export default function Navbar({ user, userProfile }) {
                 <Link
                   href="/scores"
                   className={`px-4 py-2 rounded-lg transition ${isActive('/scores')
-                      ? 'bg-white/20 text-white backdrop-blur-sm'
-                      : 'text-white/90 hover:bg-white/10'
+                    ? 'bg-white/20 text-white backdrop-blur-sm'
+                    : 'text-white/90 hover:bg-white/10'
                     }`}
                 >
                   Scores
@@ -127,8 +148,8 @@ export default function Navbar({ user, userProfile }) {
                 <Link
                   href="/teams"
                   className={`px-4 py-2 rounded-lg transition ${isActive('/teams')
-                      ? 'bg-white/20 text-white backdrop-blur-sm'
-                      : 'text-white/90 hover:bg-white/10'
+                    ? 'bg-white/20 text-white backdrop-blur-sm'
+                    : 'text-white/90 hover:bg-white/10'
                     }`}
                 >
                   Teams
@@ -139,8 +160,8 @@ export default function Navbar({ user, userProfile }) {
                 <Link
                   href="/drills"
                   className={`px-4 py-2 rounded-lg transition ${isActive('/drills')
-                      ? 'bg-white/20 text-white backdrop-blur-sm'
-                      : 'text-white/90 hover:bg-white/10'
+                    ? 'bg-white/20 text-white backdrop-blur-sm'
+                    : 'text-white/90 hover:bg-white/10'
                     }`}
                 >
                   Drills
@@ -148,8 +169,8 @@ export default function Navbar({ user, userProfile }) {
                 <Link
                   href="/my-results"
                   className={`px-4 py-2 rounded-lg transition ${isActive('/my-results')
-                      ? 'bg-white/20 text-white backdrop-blur-sm'
-                      : 'text-white/90 hover:bg-white/10'
+                    ? 'bg-white/20 text-white backdrop-blur-sm'
+                    : 'text-white/90 hover:bg-white/10'
                     }`}
                 >
                   My Results
@@ -160,8 +181,8 @@ export default function Navbar({ user, userProfile }) {
             <Link
               href="/leaderboard"
               className={`px-4 py-2 rounded-lg transition ${isActive('/leaderboard')
-                  ? 'bg-white/20 text-white backdrop-blur-sm'
-                  : 'text-white/90 hover:bg-white/10'
+                ? 'bg-white/20 text-white backdrop-blur-sm'
+                : 'text-white/90 hover:bg-white/10'
                 }`}
             >
               Leaderboard
@@ -170,8 +191,8 @@ export default function Navbar({ user, userProfile }) {
             <Link
               href="/profile"
               className={`px-4 py-2 rounded-lg transition ${isActive('/profile')
-                  ? 'bg-white/20 text-white backdrop-blur-sm'
-                  : 'text-white/90 hover:bg-white/10'
+                ? 'bg-white/20 text-white backdrop-blur-sm'
+                : 'text-white/90 hover:bg-white/10'
                 }`}
             >
               Profile
@@ -180,8 +201,8 @@ export default function Navbar({ user, userProfile }) {
             <Link
               href="/about"
               className={`px-4 py-2 rounded-lg transition ${isActive('/about')
-                  ? 'bg-white/20 text-white backdrop-blur-sm'
-                  : 'text-white/90 hover:bg-white/10'
+                ? 'bg-white/20 text-white backdrop-blur-sm'
+                : 'text-white/90 hover:bg-white/10'
                 }`}
             >
               About
@@ -190,8 +211,8 @@ export default function Navbar({ user, userProfile }) {
 
           {/* User Info, Team Switcher & Logout - Desktop */}
           <div className="hidden md:flex items-center gap-4">
-            {/* Team Switcher for Players */}
-            {userProfile?.role === 'player' && myTeams.length > 1 && (
+            {/* Team Switcher for BOTH Players AND Coaches */}
+            {myTeams.length > 1 && (
               <div className="relative group">
                 <button
                   disabled={switchingTeam}
@@ -211,8 +232,8 @@ export default function Navbar({ user, userProfile }) {
                       onClick={() => handleTeamSwitch(team.id)}
                       disabled={switchingTeam}
                       className={`w-full text-left px-4 py-2 hover:bg-gray-700 transition ${team.id === userProfile.active_team_id
-                          ? 'bg-blue-900/30 text-blue-400'
-                          : 'text-white'
+                        ? 'bg-blue-900/30 text-blue-400'
+                        : 'text-white'
                         } first:rounded-t-lg last:rounded-b-lg`}
                     >
                       {team.id === userProfile.active_team_id && '✓ '}
@@ -258,10 +279,12 @@ export default function Navbar({ user, userProfile }) {
         {/* Mobile Menu */}
         {mobileMenuOpen && (
           <div className="md:hidden pb-4 space-y-2">
-            {/* Mobile Team Switcher */}
-            {userProfile?.role === 'player' && myTeams.length > 1 && (
+            {/* Mobile Team Switcher for BOTH Players AND Coaches */}
+            {myTeams.length > 1 && (
               <div className="px-4 py-3 bg-white/10 backdrop-blur-sm rounded-lg mb-2">
-                <p className="text-white/80 text-xs mb-2">Switch Team:</p>
+                <p className="text-white/80 text-xs mb-2">
+                  {userProfile?.role === 'coach' ? 'Working on:' : 'Switch Team:'}
+                </p>
                 <div className="space-y-1">
                   {myTeams.map(team => (
                     <button
@@ -269,8 +292,8 @@ export default function Navbar({ user, userProfile }) {
                       onClick={() => handleTeamSwitch(team.id)}
                       disabled={switchingTeam}
                       className={`w-full text-left px-3 py-2 rounded transition ${team.id === userProfile.active_team_id
-                          ? 'bg-blue-600 text-white'
-                          : 'bg-white/10 text-white hover:bg-white/20'
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-white/10 text-white hover:bg-white/20'
                         }`}
                     >
                       {team.id === userProfile.active_team_id && '✓ '}
@@ -287,8 +310,8 @@ export default function Navbar({ user, userProfile }) {
                   href="/dashboard"
                   onClick={() => setMobileMenuOpen(false)}
                   className={`block px-4 py-3 rounded-lg transition ${isActive('/dashboard')
-                      ? 'bg-white/20 text-white backdrop-blur-sm'
-                      : 'text-white/90 hover:bg-white/10'
+                    ? 'bg-white/20 text-white backdrop-blur-sm'
+                    : 'text-white/90 hover:bg-white/10'
                     }`}
                 >
                   Drills
@@ -297,8 +320,8 @@ export default function Navbar({ user, userProfile }) {
                   href="/analytics"
                   onClick={() => setMobileMenuOpen(false)}
                   className={`block px-4 py-3 rounded-lg transition ${isActive('/analytics')
-                      ? 'bg-white/20 text-white backdrop-blur-sm'
-                      : 'text-white/90 hover:bg-white/10'
+                    ? 'bg-white/20 text-white backdrop-blur-sm'
+                    : 'text-white/90 hover:bg-white/10'
                     }`}
                 >
                   Analytics
@@ -307,8 +330,8 @@ export default function Navbar({ user, userProfile }) {
                   href="/scores"
                   onClick={() => setMobileMenuOpen(false)}
                   className={`block px-4 py-3 rounded-lg transition ${isActive('/scores')
-                      ? 'bg-white/20 text-white backdrop-blur-sm'
-                      : 'text-white/90 hover:bg-white/10'
+                    ? 'bg-white/20 text-white backdrop-blur-sm'
+                    : 'text-white/90 hover:bg-white/10'
                     }`}
                 >
                   Scores
@@ -317,8 +340,8 @@ export default function Navbar({ user, userProfile }) {
                   href="/teams"
                   onClick={() => setMobileMenuOpen(false)}
                   className={`block px-4 py-3 rounded-lg transition ${isActive('/teams')
-                      ? 'bg-white/20 text-white backdrop-blur-sm'
-                      : 'text-white/90 hover:bg-white/10'
+                    ? 'bg-white/20 text-white backdrop-blur-sm'
+                    : 'text-white/90 hover:bg-white/10'
                     }`}
                 >
                   Teams
@@ -330,8 +353,8 @@ export default function Navbar({ user, userProfile }) {
                   href="/drills"
                   onClick={() => setMobileMenuOpen(false)}
                   className={`block px-4 py-3 rounded-lg transition ${isActive('/drills')
-                      ? 'bg-white/20 text-white backdrop-blur-sm'
-                      : 'text-white/90 hover:bg-white/10'
+                    ? 'bg-white/20 text-white backdrop-blur-sm'
+                    : 'text-white/90 hover:bg-white/10'
                     }`}
                 >
                   Drills
@@ -340,8 +363,8 @@ export default function Navbar({ user, userProfile }) {
                   href="/my-results"
                   onClick={() => setMobileMenuOpen(false)}
                   className={`block px-4 py-3 rounded-lg transition ${isActive('/my-results')
-                      ? 'bg-white/20 text-white backdrop-blur-sm'
-                      : 'text-white/90 hover:bg-white/10'
+                    ? 'bg-white/20 text-white backdrop-blur-sm'
+                    : 'text-white/90 hover:bg-white/10'
                     }`}
                 >
                   My Results
@@ -353,8 +376,8 @@ export default function Navbar({ user, userProfile }) {
               href="/leaderboard"
               onClick={() => setMobileMenuOpen(false)}
               className={`block px-4 py-3 rounded-lg transition ${isActive('/leaderboard')
-                  ? 'bg-white/20 text-white backdrop-blur-sm'
-                  : 'text-white/90 hover:bg-white/10'
+                ? 'bg-white/20 text-white backdrop-blur-sm'
+                : 'text-white/90 hover:bg-white/10'
                 }`}
             >
               Leaderboard
@@ -364,8 +387,8 @@ export default function Navbar({ user, userProfile }) {
               href="/profile"
               onClick={() => setMobileMenuOpen(false)}
               className={`block px-4 py-3 rounded-lg transition ${isActive('/profile')
-                  ? 'bg-white/20 text-white backdrop-blur-sm'
-                  : 'text-white/90 hover:bg-white/10'
+                ? 'bg-white/20 text-white backdrop-blur-sm'
+                : 'text-white/90 hover:bg-white/10'
                 }`}
             >
               Profile
@@ -375,8 +398,8 @@ export default function Navbar({ user, userProfile }) {
               href="/about"
               onClick={() => setMobileMenuOpen(false)}
               className={`block px-4 py-3 rounded-lg transition ${isActive('/about')
-                  ? 'bg-white/20 text-white backdrop-blur-sm'
-                  : 'text-white/90 hover:bg-white/10'
+                ? 'bg-white/20 text-white backdrop-blur-sm'
+                : 'text-white/90 hover:bg-white/10'
                 }`}
             >
               About
@@ -392,7 +415,8 @@ export default function Navbar({ user, userProfile }) {
               </div>
               {activeTeam && (
                 <div className="text-white/80 text-xs mt-1">
-                  Team: {activeTeam.name}
+                  {userProfile?.role === 'coach' ? 'Working on: ' : 'Team: '}
+                  {activeTeam.name}
                 </div>
               )}
             </div>

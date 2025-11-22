@@ -15,7 +15,7 @@ export default function DrillsList({ user, userProfile }) {
     if (!user || !userProfile) return;
     fetchDrills();
     fetchTodayCompletions();
-  }, [user, userProfile]);
+  }, [user, userProfile, userProfile?.active_team_id]);
 
   const fetchDrills = async () => {
     try {
@@ -48,13 +48,13 @@ export default function DrillsList({ user, userProfile }) {
 
       setTeamName(teamData.name);
 
-      console.log('3. Fetching drills for coach_id:', teamData.coach_id);
+      console.log('3. Fetching drills for team_id:', activeTeamId);
 
-      // Fetch drills created by this team's coach
+      // Fetch drills for this specific team
       const { data, error } = await supabase
         .from('drills')
         .select('*')
-        .eq('created_by', teamData.coach_id)
+        .eq('team_id', activeTeamId)
         .eq('is_active', true)
         .order('sort_order', { ascending: true })
         .order('created_at', { ascending: false });
@@ -245,8 +245,8 @@ export default function DrillsList({ user, userProfile }) {
                   onClick={() => startDrill(drill)}
                   disabled={isCompletedToday}
                   className={`bg-gray-800 hover:bg-gray-750 border-2 rounded-xl p-6 text-left transition group ${isCompletedToday
-                      ? 'border-gray-600 opacity-60 cursor-not-allowed'
-                      : 'border-gray-700 hover:border-blue-500'
+                    ? 'border-gray-600 opacity-60 cursor-not-allowed'
+                    : 'border-gray-700 hover:border-blue-500'
                     }`}
                 >
                   <div className="flex items-start justify-between mb-3">
@@ -255,8 +255,8 @@ export default function DrillsList({ user, userProfile }) {
                     </h3>
                     {drill.daily_limit && (
                       <span className={`text-xs px-2 py-1 rounded font-semibold ${isCompletedToday
-                          ? 'bg-gray-600 text-gray-400'
-                          : 'bg-yellow-600 text-white'
+                        ? 'bg-gray-600 text-gray-400'
+                        : 'bg-yellow-600 text-white'
                         }`}>
                         {isCompletedToday ? '✓ DONE TODAY' : '1/DAY'}
                       </span>

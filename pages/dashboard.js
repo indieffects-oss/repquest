@@ -1,4 +1,4 @@
-// pages/dashboard.js - v0.44 with Sport & Tag Filtering
+// pages/dashboard.js - v0.47 with Multi-Team Support
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import { supabase } from '../lib/supabaseClient';
@@ -49,20 +49,38 @@ export default function Dashboard({ user, userProfile }) {
   ];
 
   useEffect(() => {
-    if (userProfile && userProfile.role !== 'coach') {
+    if (!user || !userProfile) {
+      return; // Wait for user and profile to load
+    }
+
+    if (userProfile.role !== 'coach') {
       router.push('/drills');
       return;
     }
+
+    if (!userProfile.active_team_id) {
+      setLoading(false);
+      return; // Don't fetch drills if no active team
+    }
+
+    // Fetch drills whenever active team changes
     fetchDrills();
     fetchLibraryDrills();
-  }, [userProfile]);
+  }, [user, userProfile, userProfile?.active_team_id]);
 
   const fetchDrills = async () => {
     try {
+      if (!user || !user.id || !userProfile?.active_team_id) {
+        setDrills([]);
+        setLoading(false);
+        return;
+      }
+
       const { data, error } = await supabase
         .from('drills')
         .select('*')
         .eq('created_by', user.id)
+        .eq('team_id', userProfile.active_team_id)
         .order('sort_order', { ascending: true })
         .order('created_at', { ascending: false });
 
@@ -77,6 +95,11 @@ export default function Dashboard({ user, userProfile }) {
 
   const fetchLibraryDrills = async () => {
     try {
+      if (!user || !user.id) {
+        console.log('User not ready, skipping library fetch');
+        return;
+      }
+
       const { data, error } = await supabase
         .from('drills')
         .select(`
@@ -119,6 +142,11 @@ export default function Dashboard({ user, userProfile }) {
       return;
     }
 
+    if (!userProfile.active_team_id) {
+      alert('Please select a team first');
+      return;
+    }
+
     setSaving(true);
     try {
       const drillData = {
@@ -150,6 +178,7 @@ export default function Dashboard({ user, userProfile }) {
           .from('drills')
           .select('sort_order')
           .eq('created_by', user.id)
+          .eq('team_id', userProfile.active_team_id)
           .order('sort_order', { ascending: false })
           .limit(1);
 
@@ -158,6 +187,7 @@ export default function Dashboard({ user, userProfile }) {
         const { error } = await supabase.from('drills').insert({
           ...drillData,
           created_by: user.id,
+          team_id: userProfile.active_team_id,
           sort_order: nextSortOrder
         });
 
@@ -197,12 +227,18 @@ export default function Dashboard({ user, userProfile }) {
   const copyFromLibrary = async (libraryDrill) => {
     if (!confirm(`Copy "${libraryDrill.name}" to your drills?`)) return;
 
+    if (!userProfile.active_team_id) {
+      alert('Please select a team first');
+      return;
+    }
+
     try {
       // Get max sort_order for new drill
       const { data: maxData } = await supabase
         .from('drills')
         .select('sort_order')
         .eq('created_by', user.id)
+        .eq('team_id', userProfile.active_team_id)
         .order('sort_order', { ascending: false })
         .limit(1);
 
@@ -223,6 +259,7 @@ export default function Dashboard({ user, userProfile }) {
         sport: libraryDrill.sport || 'Other',
         tags: libraryDrill.tags || [],
         created_by: user.id, // CRITICAL: Set this coach as creator
+        team_id: userProfile.active_team_id,
         sort_order: nextSortOrder
       });
 
@@ -343,233 +380,211 @@ export default function Dashboard({ user, userProfile }) {
     return <div className="p-6 text-white">Loading...</div>;
   }
 
+  if (!userProfile?.active_team_id) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-gray-900 p-4 sm:p-6">
+        <div className="max-w-7xl mx-auto">
+          <div className="bg-gray-800 rounded-xl p-12 border border-gray-700 text-center">
+            <div className="text-6xl mb-4">🏆</div>
+            <h2 className="text-2xl font-bold text-white mb-4">Select a Team</h2>
+            <p className="text-gray-400 mb-6">
+              Please select which team you want to work on from the dropdown in the navbar.
+            </p>
+            <button
+              onClick={() => router.push('/teams')}
+              className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-semibold"
+            >
+              Go to Teams
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-gray-900 p-4 sm:p-6">
-      <div className="max-w-7xl mx-auto">
-        <div className="mb-6 flex justify-between items-center">
+      <div className="max-w-7xl mx-auto space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
           <div>
             <h1 className="text-2xl sm:text-3xl font-bold text-white mb-2">Drill Management</h1>
-            <p className="text-gray-400 text-sm sm:text-base">Create and organize drills for your team</p>
+            <p className="text-gray-400 text-sm sm:text-base">Create and manage drills for your team</p>
           </div>
 
           <button
             onClick={() => setShowLibrary(!showLibrary)}
-            className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg font-semibold transition flex items-center gap-2"
+            className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-3 rounded-lg font-semibold transition flex items-center gap-2 justify-center"
           >
-            📚 {showLibrary ? 'Hide' : 'Browse'} Library
-            {libraryDrills.length > 0 && (
-              <span className="bg-white/20 px-2 py-0.5 rounded-full text-xs">
-                {libraryDrills.length}
-              </span>
-            )}
+            📚 {showLibrary ? 'Hide' : 'Show'} Drill Library
           </button>
         </div>
 
-        {/* Drill Library */}
+        {/* Library Modal */}
         {showLibrary && (
-          <div className="bg-gray-800 rounded-xl p-4 sm:p-6 border border-purple-700 mb-6">
-            <h2 className="text-xl font-bold text-white mb-4">📚 Drill Library</h2>
-            <p className="text-gray-400 text-sm mb-4">
-              Browse and copy drills shared by other coaches
-            </p>
-
-            {/* Library Filters */}
-            <div className="bg-gray-700/50 rounded-lg p-4 mb-4 space-y-3">
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                {/* Sport Filter */}
-                <div>
-                  <label className="block text-gray-300 text-sm mb-2">Filter by Sport:</label>
-                  <select
-                    value={sportFilter}
-                    onChange={(e) => setSportFilter(e.target.value)}
-                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:border-blue-500"
-                  >
-                    <option value="all">All Sports ({libraryDrills.length})</option>
-                    {availableSports.map(sport => {
-                      const count = libraryDrills.filter(d => d.sport === sport).length;
-                      return (
-                        <option key={sport} value={sport}>
-                          {sport} ({count})
-                        </option>
-                      );
-                    })}
-                  </select>
-                </div>
-
-                {/* Tag Filter */}
-                <div>
-                  <label className="block text-gray-300 text-sm mb-2">Filter by Category:</label>
-                  <select
-                    value={tagFilter}
-                    onChange={(e) => setTagFilter(e.target.value)}
-                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:border-blue-500"
-                  >
-                    <option value="all">All Categories</option>
-                    {availableTags.map(tag => {
-                      const count = libraryDrills.filter(d => d.tags?.includes(tag)).length;
-                      return (
-                        <option key={tag} value={tag}>
-                          {tag} ({count})
-                        </option>
-                      );
-                    })}
-                  </select>
-                </div>
-
-                {/* Search */}
-                <div>
-                  <label className="block text-gray-300 text-sm mb-2">Search:</label>
-                  <input
-                    type="text"
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    placeholder="Search drills..."
-                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
-                  />
-                </div>
-              </div>
-
-              {/* Active Filters Display */}
-              {(sportFilter !== 'all' || tagFilter !== 'all' || searchTerm) && (
-                <div className="flex flex-wrap gap-2 items-center">
-                  <span className="text-gray-400 text-sm">Active filters:</span>
-                  {sportFilter !== 'all' && (
-                    <span className="bg-blue-600 text-white px-3 py-1 rounded-full text-xs flex items-center gap-1">
-                      Sport: {sportFilter}
-                      <button onClick={() => setSportFilter('all')} className="hover:text-gray-300">✕</button>
-                    </span>
-                  )}
-                  {tagFilter !== 'all' && (
-                    <span className="bg-green-600 text-white px-3 py-1 rounded-full text-xs flex items-center gap-1">
-                      {tagFilter}
-                      <button onClick={() => setTagFilter('all')} className="hover:text-gray-300">✕</button>
-                    </span>
-                  )}
-                  {searchTerm && (
-                    <span className="bg-purple-600 text-white px-3 py-1 rounded-full text-xs flex items-center gap-1">
-                      "{searchTerm}"
-                      <button onClick={() => setSearchTerm('')} className="hover:text-gray-300">✕</button>
-                    </span>
-                  )}
-                  <button
-                    onClick={() => {
-                      setSportFilter('all');
-                      setTagFilter('all');
-                      setSearchTerm('');
-                    }}
-                    className="text-blue-400 hover:text-blue-300 text-xs underline"
-                  >
-                    Clear all
-                  </button>
-                </div>
-              )}
+          <div className="bg-gray-800 rounded-xl p-4 sm:p-6 border border-purple-700">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-bold text-white">📚 Drill Library</h2>
+              <button
+                onClick={() => setShowLibrary(false)}
+                className="text-gray-400 hover:text-white text-2xl"
+              >
+                ✕
+              </button>
             </div>
 
-            {/* Library Drills Grid */}
-            {filteredLibraryDrills.length === 0 ? (
-              <div className="text-center py-8">
-                <div className="text-5xl mb-3">🔍</div>
-                <p className="text-white mb-2">No drills found</p>
-                <p className="text-gray-400 text-sm">
-                  {libraryDrills.length === 0
-                    ? 'No public drills available yet'
-                    : 'Try adjusting your filters'}
-                </p>
-              </div>
-            ) : (
-              <div>
-                <p className="text-gray-400 text-sm mb-3">
-                  Showing {filteredLibraryDrills.length} of {libraryDrills.length} drills
-                </p>
-                <div className="grid md:grid-cols-2 gap-4">
-                  {filteredLibraryDrills.map(drill => (
-                    <div key={drill.id} className="bg-gray-700 rounded-lg p-4 border-2 border-purple-600/30 hover:border-purple-500 transition">
-                      <div className="flex justify-between items-start mb-3">
-                        <div className="flex-1">
-                          <h3 className="text-white font-bold text-lg mb-1">{drill.name}</h3>
-                          <p className="text-gray-400 text-xs mb-2">
-                            by {drill.creator?.display_name || 'Unknown'}
-                          </p>
-                        </div>
-                        <button
-                          onClick={() => copyFromLibrary(drill)}
-                          className="bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded text-sm font-semibold transition"
-                        >
-                          + Copy
-                        </button>
-                      </div>
+            <p className="text-gray-400 text-sm mb-4">
+              Browse and copy drills shared by other coaches. Copied drills will be added to your team's drill list.
+            </p>
 
-                      {drill.description && (
-                        <p className="text-gray-300 text-sm mb-3 line-clamp-2" style={{ whiteSpace: 'pre-line' }}>{drill.description}</p>
-                      )}
+            {/* Filters */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
+              <input
+                type="text"
+                placeholder="🔍 Search drills..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-purple-500"
+              />
 
-                      <div className="flex flex-wrap gap-2 mb-3">
-                        {drill.sport && (
-                          <span className="bg-blue-600/30 text-blue-300 px-2 py-1 rounded text-xs font-semibold">
-                            🏅 {drill.sport}
-                          </span>
-                        )}
-                        {drill.tags?.slice(0, 3).map(tag => (
-                          <span key={tag} className="bg-green-600/30 text-green-300 px-2 py-1 rounded text-xs">
-                            {tag}
-                          </span>
-                        ))}
-                        {drill.tags?.length > 3 && (
-                          <span className="text-gray-400 text-xs px-2 py-1">
-                            +{drill.tags.length - 3} more
-                          </span>
-                        )}
-                      </div>
+              <select
+                value={sportFilter}
+                onChange={(e) => setSportFilter(e.target.value)}
+                className="px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:border-purple-500"
+              >
+                <option value="all">All Sports</option>
+                {availableSports.map(sport => (
+                  <option key={sport} value={sport}>{sport}</option>
+                ))}
+              </select>
 
-                      <div className="flex gap-3 text-sm text-gray-400">
-                        <span>{getDrillTypeLabel(drill.type)}</span>
-                        {drill.type === 'timer' && drill.duration && (
-                          <span>• {drill.duration}s</span>
-                        )}
-                        {drill.type !== 'check' && drill.type !== 'stopwatch' && (
-                          <span>• 💎 {drill.points_per_rep} pts/rep</span>
-                        )}
-                        {drill.points_for_completion > 0 && (
-                          <span>• 🎁 +{drill.points_for_completion}</span>
-                        )}
+              <select
+                value={tagFilter}
+                onChange={(e) => setTagFilter(e.target.value)}
+                className="px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:border-purple-500"
+              >
+                <option value="all">All Tags</option>
+                {availableTags.map(tag => (
+                  <option key={tag} value={tag}>{tag}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Library Drills */}
+            <div className="max-h-96 overflow-y-auto space-y-3">
+              {filteredLibraryDrills.length === 0 ? (
+                <p className="text-gray-400 text-center py-8">No drills found matching your filters.</p>
+              ) : (
+                filteredLibraryDrills.map(drill => (
+                  <div key={drill.id} className="bg-gray-700 rounded-lg p-4 border border-gray-600">
+                    <div className="flex justify-between items-start mb-2">
+                      <div className="flex-1">
+                        <h3 className="text-white font-bold">{drill.name}</h3>
+                        <p className="text-xs text-gray-400">
+                          by {drill.creator?.display_name || 'Unknown'}
+                        </p>
                       </div>
+                      <button
+                        onClick={() => copyFromLibrary(drill)}
+                        className="bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded text-sm font-semibold transition"
+                      >
+                        Copy
+                      </button>
                     </div>
-                  ))}
-                </div>
-              </div>
-            )}
+
+                    {drill.description && (
+                      <p className="text-gray-300 text-sm mb-2 line-clamp-2">{drill.description}</p>
+                    )}
+
+                    <div className="flex flex-wrap gap-1 mb-2">
+                      {drill.sport && drill.sport !== 'Other' && (
+                        <span className="bg-blue-600/30 text-blue-300 px-2 py-0.5 rounded text-xs">
+                          🏅 {drill.sport}
+                        </span>
+                      )}
+                      {drill.tags?.slice(0, 3).map(tag => (
+                        <span key={tag} className="bg-green-600/30 text-green-300 px-2 py-0.5 rounded text-xs">
+                          {tag}
+                        </span>
+                      ))}
+                      {drill.tags?.length > 3 && (
+                        <span className="text-gray-400 text-xs px-2 py-0.5">
+                          +{drill.tags.length - 3}
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="flex gap-3 text-xs text-gray-400">
+                      <span>{getDrillTypeLabel(drill.type)}</span>
+                      {drill.type !== 'check' && drill.type !== 'stopwatch' && (
+                        <span>💎 {drill.points_per_rep} pts/rep</span>
+                      )}
+                      <span>🎁 {drill.points_for_completion} bonus</span>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
           </div>
         )}
 
-        {/* Create/Edit Form */}
-        <div className="bg-gray-800 rounded-xl p-4 sm:p-6 border border-gray-700 mb-6">
+        {/* Create/Edit Drill Form */}
+        <div className="bg-gray-800 rounded-xl p-4 sm:p-6 border border-gray-700">
           <h2 className="text-xl font-bold text-white mb-4">
             {editingDrill ? 'Edit Drill' : 'Create New Drill'}
           </h2>
 
           <form onSubmit={handleSubmit} className="space-y-4">
-            {/* Drill Name */}
             <div>
-              <label className="block text-gray-300 text-sm mb-2">
-                Drill Name <span className="text-red-400">*</span>
-              </label>
+              <label className="block text-gray-300 text-sm mb-2">Drill Name *</label>
               <input
                 type="text"
                 value={form.name}
                 onChange={(e) => setForm({ ...form, name: e.target.value })}
-                placeholder="e.g., Ball Handling, Sprint Intervals, Free Throws"
-                required
+                placeholder="e.g., Box Jumps"
                 className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
               />
             </div>
 
-            {/* Sport and Type Row */}
+            <div>
+              <label className="block text-gray-300 text-sm mb-2">Drill Type *</label>
+              <select
+                value={form.type}
+                onChange={(e) => setForm({ ...form, type: e.target.value })}
+                className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:border-blue-500"
+              >
+                <option value="timer">⏱️ Timer (countdown)</option>
+                <option value="stopwatch">⏱️ Stopwatch (count up)</option>
+                <option value="reps">🔢 Rep Counter</option>
+                <option value="check">✓ Checkbox (complete task)</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-gray-300 text-sm mb-2">Description</label>
+              <textarea
+                value={form.description}
+                onChange={(e) => setForm({ ...form, description: e.target.value })}
+                placeholder="Explain how to perform this drill..."
+                rows="3"
+                className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-gray-300 text-sm mb-2">Video URL (optional)</label>
+              <input
+                type="url"
+                value={form.video_url}
+                onChange={(e) => setForm({ ...form, video_url: e.target.value })}
+                placeholder="https://youtube.com/watch?v=..."
+                className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
+              />
+            </div>
+
+            {/* Sport & Tags */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {/* Sport Selection */}
               <div>
-                <label className="block text-gray-300 text-sm mb-2">
-                  Sport <span className="text-red-400">*</span>
-                </label>
+                <label className="block text-gray-300 text-sm mb-2">Sport</label>
                 <select
                   value={form.sport}
                   onChange={(e) => setForm({ ...form, sport: e.target.value })}
@@ -581,93 +596,52 @@ export default function Dashboard({ user, userProfile }) {
                 </select>
               </div>
 
-              {/* Drill Type */}
               <div>
-                <label className="block text-gray-300 text-sm mb-2">Drill Type</label>
-                <select
-                  value={form.type}
-                  onChange={(e) => setForm({ ...form, type: e.target.value })}
-                  className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:border-blue-500"
-                >
-                  <option value="timer">⏱️ Timer (countdown)</option>
-                  <option value="stopwatch">⏱️ Stopwatch (count up)</option>
-                  <option value="reps">🔢 Rep Counter</option>
-                  <option value="check">✓ Checkbox (Yes/No)</option>
-                </select>
-              </div>
-            </div>
-
-            {/* Tags Selection */}
-            <div>
-              <label className="block text-gray-300 text-sm mb-2">
-                Categories/Tags (select all that apply)
-              </label>
-              <div className="bg-gray-700/50 rounded-lg p-3 max-h-32 overflow-y-auto">
-                <div className="flex flex-wrap gap-2">
+                <label className="block text-gray-300 text-sm mb-2">
+                  Tags (click to add/remove)
+                </label>
+                <div className="flex flex-wrap gap-1 max-h-20 overflow-y-auto p-2 bg-gray-700 border border-gray-600 rounded-lg">
                   {commonTags.map(tag => (
                     <button
                       key={tag}
                       type="button"
                       onClick={() => toggleTag(tag)}
-                      className={`px-3 py-1 rounded-full text-xs font-semibold transition ${form.tags.includes(tag)
-                          ? 'bg-green-600 text-white'
-                          : 'bg-gray-600 text-gray-300 hover:bg-gray-500'
+                      className={`px-2 py-1 rounded text-xs transition ${form.tags.includes(tag)
+                        ? 'bg-green-600 text-white'
+                        : 'bg-gray-600 text-gray-300 hover:bg-gray-500'
                         }`}
                     >
-                      {form.tags.includes(tag) && '✓ '}{tag}
+                      {tag}
                     </button>
                   ))}
                 </div>
+                {form.tags.length > 0 && (
+                  <p className="text-xs text-gray-400 mt-1">
+                    Selected: {form.tags.join(', ')}
+                  </p>
+                )}
               </div>
-              {form.tags.length > 0 && (
-                <p className="text-xs text-gray-400 mt-1">
-                  Selected: {form.tags.join(', ')}
-                </p>
-              )}
             </div>
 
-            {/* Description */}
-            <div>
-              <label className="block text-gray-300 text-sm mb-2">Description (optional)</label>
-              <textarea
-                value={form.description}
-                onChange={(e) => setForm({ ...form, description: e.target.value })}
-                placeholder="Describe the drill, technique, or goals..."
-                rows="3"
-                className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
-              />
-            </div>
+            {/* Timer Duration */}
+            {form.type === 'timer' && (
+              <div>
+                <label className="block text-gray-300 text-sm mb-2">Duration (seconds)</label>
+                <input
+                  type="number"
+                  value={form.duration}
+                  onChange={(e) => setForm({ ...form, duration: e.target.value })}
+                  min="1"
+                  className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:border-blue-500"
+                />
+              </div>
+            )}
 
-            {/* Video URL */}
-            <div>
-              <label className="block text-gray-300 text-sm mb-2">Video URL (optional)</label>
-              <input
-                type="url"
-                value={form.video_url}
-                onChange={(e) => setForm({ ...form, video_url: e.target.value })}
-                placeholder="https://youtube.com/..."
-                className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
-              />
-            </div>
-
-            {/* Duration and Points */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-              {form.type === 'timer' && (
-                <div>
-                  <label className="block text-gray-300 text-sm mb-2">Duration (sec)</label>
-                  <input
-                    type="number"
-                    value={form.duration}
-                    onChange={(e) => setForm({ ...form, duration: e.target.value })}
-                    min="1"
-                    className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:border-blue-500"
-                  />
-                </div>
-              )}
-
+            {/* Points */}
+            <div className="grid grid-cols-2 gap-4">
               {form.type !== 'check' && form.type !== 'stopwatch' && (
                 <div>
-                  <label className="block text-gray-300 text-sm mb-2">Points/Rep</label>
+                  <label className="block text-gray-300 text-sm mb-2">Points per Rep</label>
                   <input
                     type="number"
                     value={form.points_per_rep}
@@ -763,8 +737,8 @@ export default function Dashboard({ user, userProfile }) {
                 <div
                   key={drill.id}
                   className={`p-4 rounded-lg border-2 transition ${drill.is_active === false
-                      ? 'bg-gray-700/50 border-gray-600 opacity-60'
-                      : 'bg-gray-700 border-gray-600 hover:border-blue-500'
+                    ? 'bg-gray-700/50 border-gray-600 opacity-60'
+                    : 'bg-gray-700 border-gray-600 hover:border-blue-500'
                     }`}
                 >
                   <div className="flex items-start gap-3">
