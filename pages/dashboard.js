@@ -670,10 +670,6 @@ export default function Dashboard({ user, userProfile }) {
                       <div className="text-white font-semibold mb-1">
                         Skip Rep Input
                       </div>
-                      <div className="text-gray-400 text-sm">
-                        Players won't be asked to enter reps after completing this timer.
-                        Only the completion bonus will be awarded.
-                      </div>
                       {form.skip_rep_input && (
                         <div className="mt-2 text-yellow-400 text-sm font-semibold">
                           🎁 This drill will only award the completion bonus
