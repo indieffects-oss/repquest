@@ -1,4 +1,4 @@
-// pages/player.js - v0.44 FIXED - No duplicate modals
+// pages/player.js - v0.50 SCHEMA MATCHED - matches actual database schema exactly
 import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/router';
 import { supabase } from '../lib/supabaseClient';
@@ -27,6 +27,7 @@ export default function PlayerDrill({ user, userProfile }) {
   const [stats, setStats] = useState(null);
   const [teamName, setTeamName] = useState('');
   const [teamColors, setTeamColors] = useState({ primary: '#3B82F6', secondary: '#1E40AF' });
+  const [autoSubmitted, setAutoSubmitted] = useState(false); // NEW: Track if auto-submitted
 
   const countdownInterval = useRef(null);
   const timerInterval = useRef(null);
@@ -35,6 +36,7 @@ export default function PlayerDrill({ user, userProfile }) {
   const startBeep = useRef(null);
   const endBuzzer = useRef(null);
   const wakeLock = useRef(null);
+  const hasAutoSubmitted = useRef(false); // NEW: Prevent multiple auto-submissions
 
   useEffect(() => {
     countdownBeep.current = new Audio('/sounds/beep.wav');
@@ -114,7 +116,18 @@ export default function PlayerDrill({ user, userProfile }) {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [running]);
-  
+
+  // NEW: Auto-submit timer drills when skip_rep_input is true
+  useEffect(() => {
+    if (completed && drill?.type === 'timer' && drill?.skip_rep_input && !hasAutoSubmitted.current) {
+      // Auto-submit after a brief delay to show completion animation
+      const timer = setTimeout(() => {
+        handleSubmitNoReps();
+      }, 1500);
+
+      return () => clearTimeout(timer);
+    }
+  }, [completed, drill?.type, drill?.skip_rep_input]);
 
   const fetchStats = async () => {
     try {
@@ -152,7 +165,7 @@ export default function PlayerDrill({ user, userProfile }) {
       if (userProfile?.active_team_id) {
         const { data: teamData } = await supabase
           .from('teams')
-          .select('name, primary_color, secondary_color')  // ADD COLOR FIELDS
+          .select('name, primary_color, secondary_color')
           .eq('id', userProfile.active_team_id)
           .single();
 
@@ -248,232 +261,349 @@ export default function PlayerDrill({ user, userProfile }) {
     setCompleted(true);
   };
 
-  const handleCheckboxSubmit = async (didComplete) => {
+  // NEW: Handle submission without reps (for skip_rep_input drills)
+  const handleSubmitNoReps = async () => {
+    // Double guard: check both state and ref
+    if (submitting || autoSubmitted || hasAutoSubmitted.current) {
+      console.log('Submission already in progress, skipping...');
+      return;
+    }
+
+    console.log('Starting handleSubmitNoReps...');
+
+    // Set all guards immediately
+    hasAutoSubmitted.current = true;
     setSubmitting(true);
+    setAutoSubmitted(true);
 
     try {
-      const pointsEarned = didComplete ? drill.points_for_completion : 0;
+      const teamId = userProfile?.active_team_id;
+      if (!teamId) throw new Error('No active team');
 
-      const { error: insertError1 } = await supabase.from('drill_results').insert({
-        user_id: user.id,
-        drill_id: drill.id,
-        drill_name: drill.name,
-        reps: didComplete ? 1 : 0,
-        points: pointsEarned,
-        timestamp: new Date().toISOString(),
-        team_id: userProfile.active_team_id  // ADD THIS LINE
-      });
+      const pointsEarned = drill.points_for_completion || 0;
 
-      if (insertError1) {
-        console.error("Error inserting drill result:", insertError1);
-        throw new Error(`Failed to save drill result: ${insertError1.message}`);
+      // Insert result with 0 reps
+      const { error: resultError } = await supabase
+        .from('drill_results')
+        .insert({
+          user_id: user.id,
+          drill_id: drill.id,
+          team_id: teamId,
+          drill_name: drill.name,
+          team_id: teamId,
+          reps: 0,
+          points: pointsEarned,
+          points_earned: pointsEarned,
+          duration_seconds: drill.type === 'stopwatch' ? stopwatchTime : null
+        });
+
+      if (resultError) {
+        console.error('Supabase drill_results error:', JSON.stringify(resultError, null, 2));
+        throw resultError;
       }
 
-      const { data: userData } = await supabase
-        .from('users')
-        .select('total_points')
-        .eq('id', user.id)
-        .single();
+      // Update user stats (sessions and reps tracking)
+      const { error: statsError } = await supabase
+        .from('user_stats')
+        .upsert({
+          user_id: user.id,
+          total_reps: stats?.total_reps || 0,
+          sessions_completed: (stats?.sessions_completed || 0) + 1,
+          updated_at: new Date().toISOString()
+        });
 
-      const newTotalPoints = (userData.total_points || 0) + pointsEarned;
-      const oldLevel = calculateLevel(userData.total_points || 0);
-      const newLevel = calculateLevel(newTotalPoints);
+      if (statsError) throw statsError;
 
-      await supabase
+      // Update total points in users table
+      const newTotalPoints = (userProfile?.total_points || 0) + pointsEarned;
+      const { error: userError } = await supabase
         .from('users')
         .update({ total_points: newTotalPoints })
         .eq('id', user.id);
 
-      const today = new Date().toISOString().split('T')[0];
-      const { data: currentStats } = await supabase
-        .from('user_stats')
-        .select('*')
-        .eq('user_id', user.id)
-        .maybeSingle();
+      if (userError) throw userError;
 
-      const isNewDay = !currentStats || currentStats.last_activity_date !== today;
-      const newStreak = isNewDay ? (currentStats?.current_streak || 0) + 1 : (currentStats?.current_streak || 1);
-
-      const updatedStats = {
-        user_id: user.id,
-        current_streak: newStreak,
-        longest_streak: Math.max(newStreak, currentStats?.longest_streak || 0),
-        last_activity_date: today,
-        total_reps: (currentStats?.total_reps || 0) + (didComplete ? 1 : 0),
-        sessions_completed: (currentStats?.sessions_completed || 0) + 1,
-        total_points: newTotalPoints
-      };
-
-      await supabase.from('user_stats').upsert(updatedStats);
-      setStats(updatedStats);
-
+      // Check for level up
+      const oldLevel = calculateLevel(userProfile?.total_points || 0);
+      const newLevel = calculateLevel(newTotalPoints);
       if (newLevel > oldLevel) {
         setLeveledUp(newLevel);
       }
 
-      if (check67EasterEgg(newTotalPoints)) {
-        setShow67Animation(true);
-        setTimeout(() => setShow67Animation(false), 3000);
+      // Check for badge unlocks
+      const badges = await checkBadgeUnlocks(user.id, stats?.total_reps || 0, newTotalPoints);
+      if (badges.length > 0) {
+        setUnlockedBadges(badges);
       }
 
-      const newBadges = await checkBadgeUnlocks(supabase, user.id, updatedStats);
-      if (newBadges.length > 0) {
-        setUnlockedBadges(newBadges);
-      }
-
+      // Mark as completed daily if applicable
       if (drill.daily_limit) {
-        await supabase.from('drill_completions_daily').insert({
-          user_id: user.id,
-          drill_id: drill.id,
-          completed_date: today
-        });
+        const today = new Date().toISOString().split('T')[0];
+        await supabase
+          .from('drill_completions_daily')
+          .insert({
+            user_id: user.id,
+            drill_id: drill.id,
+            team_id: teamId,
+            completed_date: today
+          });
       }
 
-      // Only redirect if no modals
-      if (!newLevel || newLevel <= oldLevel) {
-        if (newBadges.length === 0) {
-          setTimeout(() => router.push('/drills'), 1500);
-        }
+      // If no modals to show, redirect
+      if (!leveledUp && badges.length === 0) {
+        setTimeout(() => router.push('/drills'), 1000);
       }
     } catch (err) {
-      console.error('Error submitting:', err);
-      alert('Failed to submit');
+      console.error('Error submitting drill:', err);
+      console.error('Error details:', JSON.stringify(err, null, 2));
+      console.error('Drill data:', { drill_id: drill.id, user_id: user.id, team_id: userProfile?.active_team_id });
+      alert(`Failed to submit drill. Error: ${err.message || 'Unknown error'}`);
+      setAutoSubmitted(false);
+      hasAutoSubmitted.current = false; // Reset ref on error
     } finally {
       setSubmitting(false);
     }
   };
 
   const handleSubmit = async () => {
-    const repsInt = drill.type === 'stopwatch' ? 0 : parseInt(reps || 0);
-    const duration = drill.type === 'stopwatch' ? stopwatchTime : null;
+    if (submitting) return;
 
-    if (drill.type !== 'stopwatch' && (!reps || repsInt <= 0)) {
-      alert('Please enter a valid number');
-      return;
+    // Handle different drill types
+    if (drill.type === 'reps') {
+      const repsValue = parseInt(reps);
+      if (!reps || repsValue <= 0) {
+        alert('Please enter a valid number of reps');
+        return;
+      }
+    }
+
+    if (drill.type === 'timer') {
+      const repsValue = parseInt(reps);
+      if (!reps || repsValue <= 0) {
+        alert('Please enter a valid number of reps');
+        return;
+      }
     }
 
     setSubmitting(true);
 
     try {
-      const totalPoints = drill.type === 'stopwatch'
-        ? drill.points_for_completion
-        : (repsInt * drill.points_per_rep) + drill.points_for_completion;
+      const teamId = userProfile?.active_team_id;
+      if (!teamId) throw new Error('No active team');
 
-      const { error: insertError } = await supabase.from('drill_results').insert({
-        user_id: user.id,
-        drill_id: drill.id,
-        drill_name: drill.name,
-        reps: repsInt,
-        duration_seconds: duration,
-        points: totalPoints,
-        timestamp: new Date().toISOString(),
-        team_id: userProfile.active_team_id
-      });
+      let pointsEarned = 0;
+      let repsValue = 0;
 
-      if (insertError) {
-        console.error('Error inserting drill result:', insertError);
-        throw new Error(`Failed to save drill result: ${insertError.message}`);
+      if (drill.type === 'reps' || drill.type === 'timer') {
+        repsValue = parseInt(reps);
+        pointsEarned = (repsValue * drill.points_per_rep) + drill.points_for_completion;
+      } else if (drill.type === 'stopwatch') {
+        pointsEarned = drill.points_for_completion;
       }
 
-      const { data: userData } = await supabase
-        .from('users')
-        .select('total_points')
-        .eq('id', user.id)
-        .single();
+      // Check for 67 easter egg
+      if (drill.type === 'reps' && repsValue === 67) {
+        setShow67Animation(true);
+        setTimeout(() => setShow67Animation(false), 2000);
+        const easterEggResult = await check67EasterEgg(user.id);
+        if (easterEggResult.unlocked) {
+          setUnlockedBadges(prev => [...prev, easterEggResult.badge]);
+        }
+      }
 
-      const newTotalPoints = (userData.total_points || 0) + totalPoints;
-      const oldLevel = calculateLevel(userData.total_points || 0);
-      const newLevel = calculateLevel(newTotalPoints);
+      // Insert result
+      const { error: resultError } = await supabase
+        .from('drill_results')
+        .insert({
+          user_id: user.id,
+          drill_id: drill.id,
+          drill_name: drill.name,
+          team_id: teamId,
+          reps: repsValue,
+          points: pointsEarned,
+          points_earned: pointsEarned,
+          duration_seconds: drill.type === 'stopwatch' ? stopwatchTime : null
+        });
 
-      await supabase
+      if (resultError) throw resultError;
+
+      // Update user stats (sessions and reps tracking)
+      const newTotalReps = (stats?.total_reps || 0) + repsValue;
+      const { error: statsError } = await supabase
+        .from('user_stats')
+        .upsert({
+          user_id: user.id,
+          total_reps: newTotalReps,
+          sessions_completed: (stats?.sessions_completed || 0) + 1,
+          updated_at: new Date().toISOString()
+        });
+
+      if (statsError) throw statsError;
+
+      // Update total points in users table
+      const newTotalPoints = (userProfile?.total_points || 0) + pointsEarned;
+      const { error: userError } = await supabase
         .from('users')
         .update({ total_points: newTotalPoints })
         .eq('id', user.id);
 
-      const today = new Date().toISOString().split('T')[0];
-      const { data: currentStats } = await supabase
-        .from('user_stats')
-        .select('*')
-        .eq('user_id', user.id)
-        .maybeSingle();
+      if (userError) throw userError;
 
-      const isNewDay = !currentStats || currentStats.last_activity_date !== today;
-      const newStreak = isNewDay ? (currentStats?.current_streak || 0) + 1 : (currentStats?.current_streak || 1);
-
-      const updatedStats = {
-        user_id: user.id,
-        current_streak: newStreak,
-        longest_streak: Math.max(newStreak, currentStats?.longest_streak || 0),
-        last_activity_date: today,
-        total_reps: (currentStats?.total_reps || 0) + repsInt,
-        sessions_completed: (currentStats?.sessions_completed || 0) + 1,
-        total_points: newTotalPoints
-      };
-
-      await supabase.from('user_stats').upsert(updatedStats);
-      setStats(updatedStats);
-
+      // Check for level up
+      const oldLevel = calculateLevel(userProfile?.total_points || 0);
+      const newLevel = calculateLevel(newTotalPoints);
       if (newLevel > oldLevel) {
         setLeveledUp(newLevel);
       }
 
-      if (check67EasterEgg(repsInt) || check67EasterEgg(totalPoints) || check67EasterEgg(newTotalPoints)) {
-        setShow67Animation(true);
-        setTimeout(() => setShow67Animation(false), 3000);
+      // Check for badge unlocks
+      const badges = await checkBadgeUnlocks(user.id, newTotalReps, newTotalPoints);
+      if (badges.length > 0) {
+        setUnlockedBadges(badges);
       }
 
-      const newBadges = await checkBadgeUnlocks(supabase, user.id, updatedStats);
-      if (newBadges.length > 0) {
-        setUnlockedBadges(newBadges);
-      }
-
+      // Mark as completed daily if applicable
       if (drill.daily_limit) {
-        await supabase.from('drill_completions_daily').insert({
-          user_id: user.id,
-          drill_id: drill.id,
-          completed_date: today
-        });
+        const today = new Date().toISOString().split('T')[0];
+        await supabase
+          .from('drill_completions_daily')
+          .insert({
+            user_id: user.id,
+            drill_id: drill.id,
+            team_id: teamId,
+            completed_date: today
+          });
       }
 
-      // Only redirect if no modals
-      if (!newLevel || newLevel <= oldLevel) {
-        if (newBadges.length === 0) {
-          setTimeout(() => {
-            if (userProfile?.role === 'coach') {
-              router.push('/dashboard');
-            } else {
-              router.push('/drills');
-            }
-          }, 1500);
-        }
+      // If no modals to show, redirect
+      if (!leveledUp && badges.length === 0) {
+        router.push('/drills');
       }
     } catch (err) {
-      console.error('Error submitting:', err);
-      alert('Failed to submit: ' + err.message);
+      console.error('Error submitting drill:', err);
+      alert('Failed to submit drill. Please try again.');
     } finally {
       setSubmitting(false);
     }
   };
 
-  const calculatedPoints = reps && drill
-    ? (parseInt(reps) * drill.points_per_rep) + drill.points_for_completion
+  const handleCheckboxSubmit = async (completed) => {
+    if (!completed) {
+      router.push('/drills');
+      return;
+    }
+
+    if (submitting) return;
+    setSubmitting(true);
+
+    try {
+      const teamId = userProfile?.active_team_id;
+      if (!teamId) throw new Error('No active team');
+
+      const pointsEarned = drill.points_for_completion;
+
+      // Insert result
+      const { error: resultError } = await supabase
+        .from('drill_results')
+        .insert({
+          user_id: user.id,
+          drill_id: drill.id,
+          drill_name: drill.name,
+          team_id: teamId,
+          reps: 0,
+          points: pointsEarned,
+          points_earned: pointsEarned
+        });
+
+      if (resultError) throw resultError;
+
+      // Update user stats (sessions and reps tracking)
+      const { error: statsError } = await supabase
+        .from('user_stats')
+        .upsert({
+          user_id: user.id,
+          total_reps: stats?.total_reps || 0,
+          sessions_completed: (stats?.sessions_completed || 0) + 1,
+          updated_at: new Date().toISOString()
+        });
+
+      if (statsError) throw statsError;
+
+      // Update total points in users table
+      const newTotalPoints = (userProfile?.total_points || 0) + pointsEarned;
+      const { error: userError } = await supabase
+        .from('users')
+        .update({ total_points: newTotalPoints })
+        .eq('id', user.id);
+
+      if (userError) throw userError;
+
+      // Check for level up
+      const oldLevel = calculateLevel(userProfile?.total_points || 0);
+      const newLevel = calculateLevel(newTotalPoints);
+      if (newLevel > oldLevel) {
+        setLeveledUp(newLevel);
+      }
+
+      // Check for badge unlocks
+      const badges = await checkBadgeUnlocks(user.id, stats?.total_reps || 0, newTotalPoints);
+      if (badges.length > 0) {
+        setUnlockedBadges(badges);
+      }
+
+      // Mark as completed daily if applicable
+      if (drill.daily_limit) {
+        const today = new Date().toISOString().split('T')[0];
+        await supabase
+          .from('drill_completions_daily')
+          .insert({
+            user_id: user.id,
+            drill_id: drill.id,
+            team_id: teamId,
+            completed_date: today
+          });
+      }
+
+      // If no modals to show, redirect
+      if (!leveledUp && badges.length === 0) {
+        router.push('/drills');
+      } else {
+        setCompleted(true);
+      }
+    } catch (err) {
+      console.error('Error submitting drill:', err);
+      alert('Failed to submit drill. Please try again.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // Calculate points for display
+  const calculatedPoints = drill?.type === 'timer' || drill?.type === 'reps'
+    ? (parseInt(reps) || 0) * drill.points_per_rep + drill.points_for_completion
     : drill?.points_for_completion || 0;
 
   if (loading) {
-    return <div className="min-h-screen bg-gray-900 flex items-center justify-center text-white">Loading...</div>;
+    return <div className="min-h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-gray-900 flex items-center justify-center">
+      <div className="text-white text-xl">Loading...</div>
+    </div>;
   }
 
   if (!drill) {
-    return <div className="min-h-screen bg-gray-900 flex items-center justify-center text-white">Drill not found</div>;
+    return <div className="min-h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-gray-900 flex items-center justify-center">
+      <div className="text-white text-xl">Drill not found</div>
+    </div>;
   }
 
   if (alreadyCompletedToday) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-gray-900 flex items-center justify-center p-4">
         <div className="bg-gray-800 rounded-xl p-8 max-w-md text-center border border-gray-700">
-          <div className="text-6xl mb-4">✅</div>
-          <h2 className="text-2xl font-bold text-white mb-2">Already Completed!</h2>
-          <p className="text-gray-400 mb-6">You've already completed this drill today. Come back tomorrow!</p>
+          <div className="text-6xl mb-4">⏰</div>
+          <h2 className="text-2xl font-bold text-white mb-2">Already Completed</h2>
+          <p className="text-gray-300 mb-6">
+            You've already completed this drill today. Come back tomorrow!
+          </p>
           <button
             onClick={() => router.push('/drills')}
             className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-semibold"
@@ -487,77 +617,93 @@ export default function PlayerDrill({ user, userProfile }) {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-gray-900 p-4">
-      <div className="max-w-2xl mx-auto">
-        <div className="bg-gray-800 rounded-xl p-6 mb-6 border border-gray-700">
-          <h1 className="text-3xl font-bold text-white mb-2">{drill.name}</h1>
-          {drill.description && (
-            <p className="text-gray-400 mb-4">{drill.description}</p>
-          )}
-          {drill.video_url && (
-            <a
-              href={drill.video_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-blue-400 hover:text-blue-300 text-sm"
-            >
-              📹 Watch Video
-            </a>
-          )}
-        </div>
+      <div className="max-w-4xl mx-auto">
+        <div className="bg-gray-800 rounded-xl p-6 sm:p-8 border border-gray-700 min-h-[600px] flex flex-col">
+          <div className="mb-6">
+            <h1 className="text-2xl sm:text-3xl font-bold text-white mb-2">{drill.name}</h1>
+            {drill.description && (
+              <p className="text-gray-300 text-sm sm:text-base whitespace-pre-line">{drill.description}</p>
+            )}
+          </div>
 
-        <div className="bg-gray-800 rounded-xl p-8 border border-gray-700 text-center">
           {countdown > 0 && (
-            <div className="text-9xl font-bold text-yellow-400 animate-pulse">
-              {countdown}
-            </div>
-          )}
-
-          {drill.type === 'timer' && countdown === 0 && !completed && (
-            <div>
-              <div className="text-7xl font-bold text-white mb-6">
-                {Math.floor(timeLeft / 60)}:{(timeLeft % 60).toString().padStart(2, '0')}
+            <div className="flex-1 flex items-center justify-center">
+              <div className="text-9xl sm:text-[12rem] font-bold text-yellow-400 animate-pulse">
+                {countdown}
               </div>
-              {!running && (
-                <button
-                  onClick={startCountdown}
-                  className="bg-green-600 hover:bg-green-700 text-white text-xl px-8 py-4 rounded-lg font-semibold"
-                >
-                  Start Timer
-                </button>
-              )}
-              {running && (
-                <div className="text-yellow-400 text-xl animate-pulse">Timer running...</div>
-              )}
             </div>
           )}
 
-          {drill.type === 'stopwatch' && countdown === 0 && !completed && (
-            <div>
-              <div className="text-7xl font-bold text-white mb-6">
-                {Math.floor(stopwatchTime / 60)}:{(stopwatchTime % 60).toString().padStart(2, '0')}
+          {!countdown && !completed && !running && (
+            <div className="flex-1 flex flex-col items-center justify-center gap-6">
+              <div className="text-center">
+                <div className="text-6xl mb-4">
+                  {drill.type === 'timer' && '⏱️'}
+                  {drill.type === 'reps' && '🔢'}
+                  {drill.type === 'stopwatch' && '⏱️'}
+                  {drill.type === 'check' && '✓'}
+                </div>
+                <div className="text-gray-300 text-lg mb-2">
+                  {drill.type === 'timer' && `${drill.duration} second timer`}
+                  {drill.type === 'reps' && 'Track your reps'}
+                  {drill.type === 'stopwatch' && 'Track your time'}
+                  {drill.type === 'check' && 'Complete this task'}
+                </div>
+                {drill.type === 'timer' && drill.skip_rep_input && (
+                  <div className="text-yellow-400 text-sm font-semibold">
+                    🎁 Completion bonus only
+                  </div>
+                )}
               </div>
-              {!running && stopwatchTime === 0 && (
-                <button
-                  onClick={startCountdown}
-                  className="bg-green-600 hover:bg-green-700 text-white text-xl px-8 py-4 rounded-lg font-semibold"
-                >
-                  Start Stopwatch
-                </button>
-              )}
-              {running && (
-                <button
-                  onClick={stopStopwatch}
-                  className="bg-red-600 hover:bg-red-700 text-white text-xl px-8 py-4 rounded-lg font-semibold"
-                >
-                  Stop
-                </button>
-              )}
+              <button
+                onClick={() => {
+                  if (drill.type === 'timer' || drill.type === 'stopwatch') {
+                    startCountdown();
+                  } else if (drill.type === 'check') {
+                    setCompleted(true);
+                  }
+                }}
+                className="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white text-2xl px-12 py-6 rounded-lg font-bold shadow-lg"
+              >
+                START
+              </button>
             </div>
           )}
 
-          {drill.type === 'reps' && !completed && (
-            <div>
-              <div className="text-gray-300 text-xl mb-4">How many reps did you complete?</div>
+          {running && drill.type === 'timer' && (
+            <div className="flex-1 flex items-center justify-center">
+              <div className="text-center">
+                <div className="text-8xl sm:text-9xl font-bold text-white mb-4">
+                  {timeLeft}
+                </div>
+                <div className="text-gray-400 text-xl">seconds remaining</div>
+              </div>
+            </div>
+          )}
+
+          {running && drill.type === 'stopwatch' && (
+            <div className="flex-1 flex flex-col items-center justify-center gap-8">
+              <div className="text-center">
+                <div className="text-8xl sm:text-9xl font-bold text-white mb-4">
+                  {Math.floor(stopwatchTime / 60)}:{(stopwatchTime % 60).toString().padStart(2, '0')}
+                </div>
+                <div className="text-gray-400 text-xl">minutes : seconds</div>
+              </div>
+              <button
+                onClick={stopStopwatch}
+                className="bg-red-600 hover:bg-red-700 text-white text-2xl px-12 py-6 rounded-lg font-bold"
+              >
+                STOP
+              </button>
+            </div>
+          )}
+
+          {!completed && drill.type === 'reps' && (
+            <div className="flex-1 flex flex-col items-center justify-center gap-6">
+              <div className="text-center">
+                <div className="text-6xl mb-4">🔢</div>
+                <div className="text-2xl font-bold text-white mb-4">How many reps?</div>
+              </div>
               <input
                 type="number"
                 value={reps}
@@ -565,17 +711,17 @@ export default function PlayerDrill({ user, userProfile }) {
                 placeholder="Enter reps"
                 min="0"
                 max="999999"
-                className="w-full max-w-xs px-6 py-4 bg-gray-700 border border-gray-600 rounded-lg text-white text-2xl text-center mb-4 focus:outline-none focus:border-blue-500"
+                className="w-full max-w-xs px-6 py-4 bg-gray-700 border border-gray-600 rounded-lg text-white text-2xl text-center focus:outline-none focus:border-blue-500"
                 autoFocus
               />
 
               {reps && parseInt(reps) > 0 && (
-                <div className="text-3xl font-bold text-green-400 mb-4">
+                <div className="text-3xl font-bold text-green-400">
                   = {calculatedPoints.toLocaleString()} points
                 </div>
               )}
 
-              <div className="text-gray-400 text-sm mb-6">
+              <div className="text-gray-400 text-sm">
                 💎 {drill.points_per_rep} pts/rep + 🎁 {drill.points_for_completion} bonus
               </div>
 
@@ -614,8 +760,9 @@ export default function PlayerDrill({ user, userProfile }) {
             </div>
           )}
 
-          {completed && drill.type === 'timer' && (
-            <div>
+          {/* Timer completed WITH rep input (default behavior) */}
+          {completed && drill.type === 'timer' && !drill.skip_rep_input && !autoSubmitted && (
+            <div className="flex-1 flex flex-col items-center justify-center">
               <div className="text-6xl mb-4">🎉</div>
               <div className="text-2xl font-bold text-white mb-4">Timer Complete!</div>
               <div className="text-gray-300 text-lg mb-4">How many reps did you complete?</div>
@@ -647,6 +794,23 @@ export default function PlayerDrill({ user, userProfile }) {
               >
                 {submitting ? 'Submitting...' : 'Submit'}
               </button>
+            </div>
+          )}
+
+          {/* Timer completed WITHOUT rep input (skip_rep_input = true) */}
+          {completed && drill.type === 'timer' && drill.skip_rep_input && (
+            <div className="flex-1 flex flex-col items-center justify-center">
+              <div className="text-6xl mb-4">🎉</div>
+              <div className="text-2xl font-bold text-white mb-4">Timer Complete!</div>
+              <div className="text-3xl font-bold text-green-400 mb-4">
+                +{drill.points_for_completion} points
+              </div>
+              <div className="text-gray-400 text-sm mb-6">
+                🎁 Completion bonus
+              </div>
+              {submitting && (
+                <div className="text-gray-400 animate-pulse">Submitting...</div>
+              )}
             </div>
           )}
 
@@ -799,7 +963,7 @@ export default function PlayerDrill({ user, userProfile }) {
           router.push('/drills');
         }}
         shareData={shareData}
-        teamColors={teamColors}  // Use state instead of hardcoded
+        teamColors={teamColors}
         userName={userProfile?.display_name || 'Player'}
         teamName={teamName || 'Team'}
       />

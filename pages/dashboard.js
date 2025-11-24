@@ -1,4 +1,4 @@
-// pages/dashboard.js - v0.47 with Multi-Team Support
+// pages/dashboard.js - v0.48 with skip_rep_input for timer drills
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import { supabase } from '../lib/supabaseClient';
@@ -23,6 +23,7 @@ export default function Dashboard({ user, userProfile }) {
     description: '',
     video_url: '',
     duration: 60,
+    skip_rep_input: false,
     points_per_rep: 1,
     points_for_completion: 10,
     is_active: true,
@@ -140,6 +141,7 @@ export default function Dashboard({ user, userProfile }) {
       description: '',
       video_url: '',
       duration: 60,
+      skip_rep_input: false,
       points_per_rep: 1,
       points_for_completion: 10,
       is_active: true,
@@ -171,7 +173,8 @@ export default function Dashboard({ user, userProfile }) {
         description: form.description.trim(),
         video_url: form.video_url.trim(),
         duration: form.type === 'timer' ? parseInt(form.duration) : null,
-        points_per_rep: (form.type === 'check' || form.type === 'stopwatch') ? 0 : parseInt(form.points_per_rep),
+        skip_rep_input: form.type === 'timer' ? form.skip_rep_input : false,
+        points_per_rep: (form.type === 'check' || form.type === 'stopwatch' || (form.type === 'timer' && form.skip_rep_input)) ? 0 : parseInt(form.points_per_rep),
         points_for_completion: parseInt(form.points_for_completion),
         is_active: form.is_active,
         daily_limit: form.daily_limit,
@@ -230,6 +233,7 @@ export default function Dashboard({ user, userProfile }) {
       description: drill.description || '',
       video_url: drill.video_url || '',
       duration: drill.duration || 60,
+      skip_rep_input: drill.skip_rep_input || false,
       points_per_rep: drill.points_per_rep || 0,
       points_for_completion: drill.points_for_completion || 0,
       is_active: drill.is_active !== false,
@@ -641,21 +645,50 @@ export default function Dashboard({ user, userProfile }) {
 
             {/* Timer Duration */}
             {form.type === 'timer' && (
-              <div>
-                <label className="block text-gray-300 text-sm mb-2">Duration (seconds)</label>
-                <input
-                  type="number"
-                  value={form.duration}
-                  onChange={(e) => setForm({ ...form, duration: e.target.value })}
-                  min="1"
-                  className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:border-blue-500"
-                />
-              </div>
+              <>
+                <div>
+                  <label className="block text-gray-300 text-sm mb-2">Duration (seconds)</label>
+                  <input
+                    type="number"
+                    value={form.duration}
+                    onChange={(e) => setForm({ ...form, duration: e.target.value })}
+                    min="1"
+                    className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+
+                {/* Skip Rep Input Toggle */}
+                <div className="bg-gray-700/50 rounded-lg p-4 border border-gray-600">
+                  <label className="flex items-start gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={form.skip_rep_input}
+                      onChange={(e) => setForm({ ...form, skip_rep_input: e.target.checked })}
+                      className="mt-1 w-5 h-5 text-blue-600 rounded focus:ring-2 focus:ring-blue-500"
+                    />
+                    <div className="flex-1">
+                      <div className="text-white font-semibold mb-1">
+                        Skip Rep Input
+                      </div>
+                      <div className="text-gray-400 text-sm">
+                        Players won't be asked to enter reps after completing this timer.
+                        Only the completion bonus will be awarded. Use this for drills where
+                        counting reps is difficult (like dribbling drills).
+                      </div>
+                      {form.skip_rep_input && (
+                        <div className="mt-2 text-yellow-400 text-sm font-semibold">
+                          🎁 This drill will only award the completion bonus
+                        </div>
+                      )}
+                    </div>
+                  </label>
+                </div>
+              </>
             )}
 
             {/* Points */}
             <div className="grid grid-cols-2 gap-4">
-              {form.type !== 'check' && form.type !== 'stopwatch' && (
+              {form.type !== 'check' && form.type !== 'stopwatch' && !(form.type === 'timer' && form.skip_rep_input) && (
                 <div>
                   <label className="block text-gray-300 text-sm mb-2">Points per Rep</label>
                   <input
@@ -668,7 +701,7 @@ export default function Dashboard({ user, userProfile }) {
                 </div>
               )}
 
-              <div className={form.type === 'check' || form.type === 'stopwatch' ? 'col-span-2' : ''}>
+              <div className={form.type === 'check' || form.type === 'stopwatch' || (form.type === 'timer' && form.skip_rep_input) ? 'col-span-2' : ''}>
                 <label className="block text-gray-300 text-sm mb-2">Completion Bonus</label>
                 <input
                   type="number"
@@ -780,43 +813,52 @@ export default function Dashboard({ user, userProfile }) {
 
                     {/* Drill Info */}
                     <div className="flex-1">
-                      <div className="flex flex-wrap items-start justify-between gap-2 mb-2">
-                        <div className="flex-1">
-                          <h3 className="text-white font-bold text-lg">
-                            {drill.name}
-                            {drill.is_active === false && (
-                              <span className="ml-2 text-xs bg-gray-600 px-2 py-1 rounded">INACTIVE</span>
-                            )}
-                            {drill.daily_limit && (
-                              <span className="ml-2 text-xs bg-yellow-600 px-2 py-1 rounded">1/DAY</span>
-                            )}
-                            {drill.is_public && (
-                              <span className="ml-2 text-xs bg-purple-600 px-2 py-1 rounded">📚 PUBLIC</span>
-                            )}
-                          </h3>
-                          <p className="text-gray-400 text-sm">{getDrillTypeLabel(drill.type)}</p>
+                      <div className="flex items-start justify-between gap-3 mb-2">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-start gap-2 flex-wrap mb-1">
+                            <h3 className="text-white font-bold text-lg break-words">
+                              {drill.name}
+                            </h3>
+                            <div className="flex flex-wrap gap-1 items-center">
+                              {drill.is_active === false && (
+                                <span className="text-xs bg-gray-600 px-2 py-1 rounded whitespace-nowrap">INACTIVE</span>
+                              )}
+                              {drill.daily_limit && (
+                                <span className="text-xs bg-yellow-600 px-2 py-1 rounded whitespace-nowrap">1/DAY</span>
+                              )}
+                              {drill.is_public && (
+                                <span className="text-xs bg-purple-600 px-2 py-1 rounded whitespace-nowrap">📚 PUBLIC</span>
+                              )}
+                              {drill.type === 'timer' && drill.skip_rep_input && (
+                                <span className="text-xs bg-orange-600 px-2 py-1 rounded whitespace-nowrap">🎁 COMPLETION ONLY</span>
+                              )}
+                            </div>
+                          </div>
+                          <p className="text-gray-400 text-sm mb-1">{getDrillTypeLabel(drill.type)}</p>
 
                           {/* Sport and Tags Display */}
-                          <div className="flex flex-wrap gap-1 mt-2">
-                            {drill.sport && drill.sport !== 'Other' && (
-                              <span className="bg-blue-600/30 text-blue-300 px-2 py-0.5 rounded text-xs">
-                                🏅 {drill.sport}
-                              </span>
-                            )}
-                            {drill.tags?.slice(0, 3).map(tag => (
-                              <span key={tag} className="bg-green-600/30 text-green-300 px-2 py-0.5 rounded text-xs">
-                                {tag}
-                              </span>
-                            ))}
-                            {drill.tags?.length > 3 && (
-                              <span className="text-gray-400 text-xs px-2 py-0.5">
-                                +{drill.tags.length - 3}
-                              </span>
-                            )}
-                          </div>
+                          {(drill.sport && drill.sport !== 'Other') || (drill.tags && drill.tags.length > 0) ? (
+                            <div className="flex flex-wrap gap-1 mt-1">
+                              {drill.sport && drill.sport !== 'Other' && (
+                                <span className="bg-blue-600/30 text-blue-300 px-2 py-0.5 rounded text-xs whitespace-nowrap">
+                                  🏅 {drill.sport}
+                                </span>
+                              )}
+                              {drill.tags?.slice(0, 3).map(tag => (
+                                <span key={tag} className="bg-green-600/30 text-green-300 px-2 py-0.5 rounded text-xs whitespace-nowrap">
+                                  {tag}
+                                </span>
+                              ))}
+                              {drill.tags?.length > 3 && (
+                                <span className="text-gray-400 text-xs px-2 py-0.5">
+                                  +{drill.tags.length - 3}
+                                </span>
+                              )}
+                            </div>
+                          ) : null}
                         </div>
 
-                        <div className="flex gap-2">
+                        <div className="flex gap-2 flex-shrink-0">
                           <button
                             onClick={() => router.push(`/player?drillId=${drill.id}`)}
                             className="px-3 py-1 bg-green-600 hover:bg-green-700 text-white rounded text-sm font-semibold transition"
@@ -849,7 +891,10 @@ export default function Dashboard({ user, userProfile }) {
                         {drill.type === 'timer' && drill.duration && (
                           <span>⏱️ {drill.duration}s</span>
                         )}
-                        {drill.type !== 'check' && drill.type !== 'stopwatch' && (
+                        {drill.type === 'timer' && drill.skip_rep_input && (
+                          <span className="text-orange-400">🎁 Completion only</span>
+                        )}
+                        {drill.type !== 'check' && drill.type !== 'stopwatch' && !(drill.type === 'timer' && drill.skip_rep_input) && (
                           <span>💎 {drill.points_per_rep} pts/rep</span>
                         )}
                         <span>🎁 {drill.points_for_completion} bonus</span>
