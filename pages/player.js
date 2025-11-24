@@ -1,4 +1,4 @@
-// pages/player.js - v0.50 SCHEMA MATCHED - matches actual database schema exactly
+// pages/player.js - v0.52 SCHEMA MATCHED - removed START button from checkbox drills
 import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/router';
 import { supabase } from '../lib/supabaseClient';
@@ -624,6 +624,16 @@ export default function PlayerDrill({ user, userProfile }) {
             {drill.description && (
               <p className="text-gray-300 text-sm sm:text-base whitespace-pre-line">{drill.description}</p>
             )}
+            {drill.video_url && (
+              <a
+                href={drill.video_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-block mt-3 text-blue-400 hover:text-blue-300 underline text-sm"
+              >
+                🎥 Video Link
+              </a>
+            )}
           </div>
 
           {countdown > 0 && (
@@ -634,20 +644,18 @@ export default function PlayerDrill({ user, userProfile }) {
             </div>
           )}
 
-          {!countdown && !completed && !running && (
+          {!countdown && !completed && !running && drill.type !== 'check' && (
             <div className="flex-1 flex flex-col items-center justify-center gap-6">
               <div className="text-center">
                 <div className="text-6xl mb-4">
                   {drill.type === 'timer' && '⏱️'}
                   {drill.type === 'reps' && '🔢'}
                   {drill.type === 'stopwatch' && '⏱️'}
-                  {drill.type === 'check' && '✓'}
                 </div>
                 <div className="text-gray-300 text-lg mb-2">
                   {drill.type === 'timer' && `${drill.duration} second timer`}
                   {drill.type === 'reps' && 'Track your reps'}
                   {drill.type === 'stopwatch' && 'Track your time'}
-                  {drill.type === 'check' && 'Complete this task'}
                 </div>
                 {drill.type === 'timer' && drill.skip_rep_input && (
                   <div className="text-yellow-400 text-sm font-semibold">
@@ -659,8 +667,6 @@ export default function PlayerDrill({ user, userProfile }) {
                 onClick={() => {
                   if (drill.type === 'timer' || drill.type === 'stopwatch') {
                     startCountdown();
-                  } else if (drill.type === 'check') {
-                    setCompleted(true);
                   }
                 }}
                 className="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white text-2xl px-12 py-6 rounded-lg font-bold shadow-lg"
@@ -736,7 +742,8 @@ export default function PlayerDrill({ user, userProfile }) {
           )}
 
           {drill.type === 'check' && !completed && (
-            <div>
+            <div className="flex-1 flex flex-col items-center justify-center">
+              <div className="text-6xl mb-6">✓</div>
               <div className="text-gray-300 text-xl mb-6">Did you complete this drill?</div>
               <div className="flex gap-4 justify-center">
                 <button
