@@ -1,4 +1,4 @@
-// pages/teams.js - v0.46 with Team Invite Links
+// pages/teams.js - v0.47 with Team Invite Links + Auto-set active_team_id on creation
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import { supabase } from '../lib/supabaseClient';
@@ -296,15 +296,31 @@ export default function Teams({ user, userProfile }) {
     }
 
     try {
-      const { error } = await supabase.from('teams').insert({
-        name: newTeam.name.trim(),
-        sport: newTeam.sport || 'Other',
-        coach_id: user.id,
-        primary_color: newTeam.primary_color,
-        secondary_color: newTeam.secondary_color
-      });
+      const { data: createdTeam, error } = await supabase
+        .from('teams')
+        .insert({
+          name: newTeam.name.trim(),
+          sport: newTeam.sport || 'Other',
+          coach_id: user.id,
+          primary_color: newTeam.primary_color,
+          secondary_color: newTeam.secondary_color
+        })
+        .select()
+        .single();
 
       if (error) throw error;
+
+      // Set as active team if coach has no active team
+      if (!userProfile.active_team_id) {
+        const { error: updateError } = await supabase
+          .from('users')
+          .update({ active_team_id: createdTeam.id })
+          .eq('id', user.id);
+
+        if (updateError) {
+          console.error('Error setting active team:', updateError);
+        }
+      }
 
       setNewTeam({
         name: '',
