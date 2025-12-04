@@ -1,4 +1,4 @@
-// pages/leaderboard.js - v0.44 Team-specific points
+// pages/leaderboard.js - v0.48 Fixed bot_stats query
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { calculateLevel, getLevelTier } from '../lib/gamification';
@@ -7,42 +7,19 @@ export default function Leaderboard({ user, userProfile }) {
   const [players, setPlayers] = useState([]);
   const [teamName, setTeamName] = useState('');
   const [loading, setLoading] = useState(true);
-  const [teams, setTeams] = useState([]);
-  const [selectedTeam, setSelectedTeam] = useState(null);
 
   useEffect(() => {
-    if (!user || !userProfile) return;
-
-    if (userProfile.role === 'coach') {
-      fetchCoachTeams();
-    } else {
-      fetchLeaderboard(userProfile.active_team_id);
+    if (!user || !userProfile) {
+      setLoading(false);
+      return;
     }
-  }, [user, userProfile]);
 
-  const fetchCoachTeams = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('teams')
-        .select('id, name, sport')
-        .eq('coach_id', user.id)
-        .order('name');
-
-      if (error) throw error;
-
-      setTeams(data || []);
-
-      if (data && data.length > 0) {
-        setSelectedTeam(data[0].id);
-        fetchLeaderboard(data[0].id);
-      } else {
-        setLoading(false);
-      }
-    } catch (err) {
-      console.error('Error fetching teams:', err);
+    if (userProfile.active_team_id) {
+      fetchLeaderboard(userProfile.active_team_id);
+    } else {
       setLoading(false);
     }
-  };
+  }, [user, userProfile]);
 
   const fetchLeaderboard = async (teamId) => {
     if (!teamId) {
@@ -73,12 +50,6 @@ export default function Leaderboard({ user, userProfile }) {
 
       const userIds = teamMembersData.map(tm => tm.user_id);
 
-      if (userIds.length === 0) {
-        setPlayers([]);
-        setLoading(false);
-        return;
-      }
-
       // Get user profiles
       const { data: usersData, error: usersError } = await supabase
         .from('users')
@@ -108,10 +79,57 @@ export default function Leaderboard({ user, userProfile }) {
       // Add team points to user data
       const playersWithPoints = usersData.map(user => ({
         ...user,
-        team_points: pointsByUser[user.id] || 0
-      })).sort((a, b) => b.team_points - a.team_points);
+        team_points: pointsByUser[user.id] || 0,
+        is_bot: false
+      }));
 
-      setPlayers(playersWithPoints);
+      // Get bots for this team
+      const { data: botsData, error: botsError } = await supabase
+        .from('bot_players')
+        .select('id, name, avatar_emoji')
+        .eq('team_id', teamId)
+        .eq('is_active', true);
+
+      if (botsError) {
+        console.error('Bots fetch error:', botsError);
+      }
+
+      // Get bot_stats separately (the nested query wasn't working)
+      const { data: botStatsData, error: botStatsError } = await supabase
+        .from('bot_stats')
+        .select('bot_id, total_points, total_reps, sessions_completed');
+
+      if (botStatsError) {
+        console.error('Bot stats fetch error:', botStatsError);
+      }
+
+      // Create a map of bot stats by bot_id
+      const botStatsMap = {};
+      botStatsData?.forEach(stats => {
+        botStatsMap[stats.bot_id] = stats;
+      });
+
+      // Add bots to players list with their stats
+      const botsWithPoints = (botsData || []).map(bot => {
+        const stats = botStatsMap[bot.id];
+        const botPoints = stats?.total_points || 0;
+        console.log(`Bot ${bot.name}: ${botPoints} points (stats:`, stats, ')');
+        return {
+          id: bot.id,
+          display_name: bot.name,
+          team_points: botPoints,
+          avatar_emoji: bot.avatar_emoji,
+          is_bot: true
+        };
+      });
+
+      // Combine and sort
+      const allPlayers = [...playersWithPoints, ...botsWithPoints]
+        .sort((a, b) => b.team_points - a.team_points);
+
+      console.log('Final leaderboard:', allPlayers);
+
+      setPlayers(allPlayers);
     } catch (err) {
       console.error('Error fetching leaderboard:', err);
     } finally {
@@ -124,7 +142,7 @@ export default function Leaderboard({ user, userProfile }) {
   }
 
   // No team check
-  if (userProfile?.role === 'player' && !userProfile?.active_team_id) {
+  if (!userProfile?.active_team_id) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-gray-900 p-6">
         <div className="max-w-4xl mx-auto">
@@ -132,35 +150,16 @@ export default function Leaderboard({ user, userProfile }) {
             <div className="text-6xl mb-4">🏆</div>
             <p className="text-white text-lg mb-2">No Active Team</p>
             <p className="text-gray-400 text-sm mb-4">
-              You need to join a team to view the leaderboard
+              {userProfile?.role === 'coach'
+                ? 'Select a team from the navbar to view its leaderboard'
+                : 'You need to join a team to view the leaderboard'
+              }
             </p>
             <button
-              onClick={() => window.location.href = '/profile'}
+              onClick={() => window.location.href = userProfile?.role === 'coach' ? '/teams' : '/profile'}
               className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg"
             >
-              Go to Profile
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (userProfile?.role === 'coach' && teams.length === 0) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-gray-900 p-6">
-        <div className="max-w-4xl mx-auto">
-          <div className="bg-gray-800 rounded-xl p-12 border border-gray-700 text-center">
-            <div className="text-6xl mb-4">🏆</div>
-            <p className="text-white text-lg mb-2">No Teams Yet</p>
-            <p className="text-gray-400 text-sm mb-4">
-              Create a team to see the leaderboard
-            </p>
-            <button
-              onClick={() => window.location.href = '/teams'}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg"
-            >
-              Go to Teams
+              {userProfile?.role === 'coach' ? 'Go to Teams' : 'Go to Profile'}
             </button>
           </div>
         </div>
@@ -177,28 +176,6 @@ export default function Leaderboard({ user, userProfile }) {
           </h1>
           <p className="text-gray-400">Top performers on your team</p>
         </div>
-
-        {/* Team Selector for Coaches */}
-        {userProfile?.role === 'coach' && teams.length > 1 && (
-          <div className="bg-gray-800 rounded-xl p-4 mb-6 border border-gray-700">
-            <label className="block text-gray-300 text-sm mb-2">Select Team:</label>
-            <select
-              value={selectedTeam}
-              onChange={(e) => {
-                setSelectedTeam(e.target.value);
-                setLoading(true);
-                fetchLeaderboard(e.target.value);
-              }}
-              className="w-full sm:w-64 px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:border-blue-500"
-            >
-              {teams.map(team => (
-                <option key={team.id} value={team.id}>
-                  {team.name} {team.sport && `(${team.sport})`}
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
 
         {players.length === 0 ? (
           <div className="bg-gray-800 rounded-xl p-12 border border-gray-700 text-center">
@@ -221,7 +198,7 @@ export default function Leaderboard({ user, userProfile }) {
               </thead>
               <tbody>
                 {players.map((player, index) => {
-                  const isCurrentUser = user && player.id === user.id;
+                  const isCurrentUser = user && player.id === user.id && !player.is_bot;
                   const rankEmoji = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : null;
                   const level = calculateLevel(player.team_points || 0);
                   const tier = getLevelTier(level);
@@ -229,7 +206,13 @@ export default function Leaderboard({ user, userProfile }) {
                   return (
                     <tr
                       key={player.id}
-                      className={`border-b border-gray-700 ${isCurrentUser ? 'bg-blue-900/30' : index % 2 === 0 ? 'bg-gray-800' : 'bg-gray-750'
+                      className={`border-b border-gray-700 ${isCurrentUser
+                          ? 'bg-blue-900/30'
+                          : player.is_bot
+                            ? 'bg-purple-900/20'
+                            : index % 2 === 0
+                              ? 'bg-gray-800'
+                              : 'bg-gray-750'
                         }`}
                     >
                       <td className="px-3 sm:px-6 py-4">
@@ -242,7 +225,11 @@ export default function Leaderboard({ user, userProfile }) {
                       </td>
                       <td className="px-3 sm:px-6 py-4">
                         <div className="flex items-center gap-3">
-                          {player.profile_picture_url ? (
+                          {player.is_bot ? (
+                            <div className="w-10 h-10 rounded-full bg-purple-600 flex items-center justify-center text-xl border-2 border-purple-500">
+                              {player.avatar_emoji}
+                            </div>
+                          ) : player.profile_picture_url ? (
                             <img
                               src={player.profile_picture_url}
                               alt={player.display_name}
@@ -254,28 +241,39 @@ export default function Leaderboard({ user, userProfile }) {
                             </div>
                           )}
                           <div>
-                            <div className={`font-semibold text-sm sm:text-base ${isCurrentUser ? 'text-blue-400' : 'text-white'}`}>
+                            <div className={`font-semibold text-sm sm:text-base ${isCurrentUser ? 'text-blue-400' : 'text-white'} flex items-center gap-2`}>
                               {player.display_name}
-                              {isCurrentUser && <span className="ml-2 text-xs">(You)</span>}
+                              {isCurrentUser && <span className="text-xs">(You)</span>}
+                              {player.is_bot && (
+                                <span className="text-xs bg-purple-600/50 text-purple-200 px-2 py-0.5 rounded-full">
+                                  🤖 BOT
+                                </span>
+                              )}
                             </div>
-                            {player.position && (
+                            {!player.is_bot && player.position && (
                               <div className="text-gray-400 text-xs sm:text-sm">{player.position}</div>
                             )}
                             {/* Show level on mobile */}
-                            <div className="sm:hidden text-xs mt-1">
-                              <span style={{ color: tier.color }}>{tier.emoji} Lvl {level}</span>
-                            </div>
+                            {!player.is_bot && (
+                              <div className="sm:hidden text-xs mt-1">
+                                <span style={{ color: tier.color }}>{tier.emoji} Lvl {level}</span>
+                              </div>
+                            )}
                           </div>
                         </div>
                       </td>
                       <td className="px-3 sm:px-6 py-4 hidden sm:table-cell">
-                        <div className="flex items-center gap-2">
-                          <span className="text-xl">{tier.emoji}</span>
-                          <div>
-                            <div className="text-white font-semibold">Level {level}</div>
-                            <div className="text-xs" style={{ color: tier.color }}>{tier.name}</div>
+                        {!player.is_bot ? (
+                          <div className="flex items-center gap-2">
+                            <span className="text-xl">{tier.emoji}</span>
+                            <div>
+                              <div className="text-white font-semibold">Level {level}</div>
+                              <div className="text-xs" style={{ color: tier.color }}>{tier.name}</div>
+                            </div>
                           </div>
-                        </div>
+                        ) : (
+                          <div className="text-gray-500 text-sm">—</div>
+                        )}
                       </td>
                       <td className="px-3 sm:px-6 py-4 text-right">
                         <span className="text-blue-400 font-bold text-base sm:text-lg">
@@ -298,20 +296,20 @@ export default function Leaderboard({ user, userProfile }) {
               <div className="text-center">
                 <div className="text-gray-400 text-sm mb-1">Team Rank</div>
                 <div className="text-2xl font-bold text-white">
-                  #{players.findIndex(p => p.id === user.id) + 1}
+                  #{players.findIndex(p => p.id === user.id && !p.is_bot) + 1}
                 </div>
               </div>
               <div className="text-center">
                 <div className="text-gray-400 text-sm mb-1">Team Points</div>
                 <div className="text-2xl font-bold text-blue-400">
-                  {(players.find(p => p.id === user.id)?.team_points || 0).toLocaleString()}
+                  {(players.find(p => p.id === user.id && !p.is_bot)?.team_points || 0).toLocaleString()}
                 </div>
               </div>
               <div className="text-center col-span-2 sm:col-span-1">
                 <div className="text-gray-400 text-sm mb-1">Behind Leader</div>
                 <div className="text-2xl font-bold text-white">
                   {players.length > 0 && players[0].id !== user.id
-                    ? (players[0].team_points - (players.find(p => p.id === user.id)?.team_points || 0)).toLocaleString()
+                    ? (players[0].team_points - (players.find(p => p.id === user.id && !p.is_bot)?.team_points || 0)).toLocaleString()
                     : 0
                   }
                 </div>

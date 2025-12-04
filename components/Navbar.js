@@ -1,4 +1,4 @@
-// components/Navbar.js - v0.48 with Fixed Team Switching
+// components/Navbar.js - v0.49 with Bots Link
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { supabase } from '../lib/supabaseClient';
@@ -154,6 +154,15 @@ export default function Navbar({ user, userProfile, onProfileUpdate }) {
                 >
                   Teams
                 </Link>
+                <Link
+                  href="/bots"
+                  className={`px-4 py-2 rounded-lg transition ${isActive('/bots')
+                    ? 'bg-white/20 text-white backdrop-blur-sm'
+                    : 'text-white/90 hover:bg-white/10'
+                    }`}
+                >
+                  🤖 Bots
+                </Link>
               </>
             ) : (
               <>
@@ -214,11 +223,10 @@ export default function Navbar({ user, userProfile, onProfileUpdate }) {
             {/* Team Switcher for BOTH Players AND Coaches */}
             {myTeams.length > 1 && (
               <div className="relative group">
-                <button
-                  disabled={switchingTeam}
-                  className="px-3 py-2 bg-white/20 hover:bg-white/30 backdrop-blur-sm text-white rounded-lg transition text-sm font-semibold flex items-center gap-2"
-                >
-                  🏆 {activeTeam?.name || 'Select Team'}
+                <button className="flex items-center gap-2 px-4 py-2 bg-white/10 backdrop-blur-sm hover:bg-white/20 rounded-lg transition text-white text-sm font-semibold">
+                  <span className="max-w-[120px] truncate">
+                    {activeTeam?.name || 'Select Team'}
+                  </span>
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                   </svg>
@@ -345,6 +353,16 @@ export default function Navbar({ user, userProfile, onProfileUpdate }) {
                     }`}
                 >
                   Teams
+                </Link>
+                <Link
+                  href="/bots"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className={`block px-4 py-3 rounded-lg transition ${isActive('/bots')
+                    ? 'bg-white/20 text-white backdrop-blur-sm'
+                    : 'text-white/90 hover:bg-white/10'
+                    }`}
+                >
+                  🤖 Bots
                 </Link>
               </>
             ) : (
