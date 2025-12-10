@@ -539,8 +539,4 @@ export default function Bots({ user, userProfile }) {
             </div>
         </div>
     );
-}/ /   t r i g g e r   d e p l o y  
- / /   t r i g g e r   d e p l o y  
- / /   r e c o n n e c t   t e s t  
- / /   w e b h o o k   t e s t  
- 
+}
