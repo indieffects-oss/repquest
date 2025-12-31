@@ -3,6 +3,10 @@
         {
             "path": "/api/cron/generate-bots",
             "schedule": "0 12 * * *"
+        },
+        {
+            "path": "/api/cron/complete-challenges",
+            "schedule": "0 12 * * *"
         }
     ]
 }

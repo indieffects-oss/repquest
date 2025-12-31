@@ -1,7 +1,103 @@
-// pages/drills.js - v0.46 with top scores display
+// pages/drills.js - v0.47 with challenge banner for players
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import { supabase } from '../lib/supabaseClient';
+
+// Simple Active Challenge Banner Component
+function ActiveChallengeBanner({ userId, teamId }) {
+  const [activeChallenge, setActiveChallenge] = useState(null);
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!teamId) return;
+    fetchActiveChallenge();
+  }, [teamId]);
+
+  const fetchActiveChallenge = async () => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+
+      const response = await fetch(
+        `/api/challenges/list?team_id=${teamId}`,
+        {
+          headers: {
+            'Authorization': `Bearer ${session.access_token}`
+          }
+        }
+      );
+
+      const result = await response.json();
+      if (result.success) {
+        // Find first active challenge
+        const active = result.challenges.find(c => c.status === 'active');
+        setActiveChallenge(active);
+      }
+    } catch (err) {
+      console.error('Error fetching challenge:', err);
+    }
+  };
+
+  if (!activeChallenge) return null;
+
+  // Calculate time remaining
+  const timeRemaining = new Date(activeChallenge.end_time) - new Date();
+
+  if (timeRemaining <= 0) {
+    // Challenge has ended, don't show banner
+    return null;
+  }
+
+  const hoursLeft = Math.floor(timeRemaining / (1000 * 60 * 60));
+  const daysLeft = Math.floor(hoursLeft / 24);
+
+  let timeText = '';
+  if (daysLeft > 0) {
+    timeText = `${daysLeft}d ${hoursLeft % 24}h left`;
+  } else if (hoursLeft > 0) {
+    const minutesLeft = Math.floor((timeRemaining % (1000 * 60 * 60)) / (1000 * 60));
+    timeText = `${hoursLeft}h ${minutesLeft}m left`;
+  } else {
+    const minutesLeft = Math.floor(timeRemaining / (1000 * 60));
+    timeText = minutesLeft > 0 ? `${minutesLeft}m left` : 'Ending soon!';
+  }
+
+  return (
+    <div className="bg-gradient-to-r from-yellow-900/50 to-orange-900/50 border-2 border-yellow-500 rounded-xl p-4 mb-6">
+      <div className="flex items-center justify-between">
+        <div className="flex-1">
+          <div className="flex items-center gap-2 mb-1">
+            <span className="text-2xl">🏆</span>
+            <h3 className="text-xl font-bold text-yellow-300">
+              Active Challenge!
+            </h3>
+            <span className="text-xs bg-red-600 text-white px-2 py-1 rounded-full font-semibold animate-pulse">
+              ⏰ {timeText}
+            </span>
+          </div>
+          <p className="text-white">
+            Your team is competing against <span className="font-bold">{activeChallenge.opponent_team.name}</span>
+          </p>
+          <div className="text-sm text-yellow-200 mt-1">
+            {activeChallenge.my_team?.name}: {activeChallenge.is_challenger
+              ? activeChallenge.challenger_stats?.[0]?.average_points?.toFixed(1) || '0.0'
+              : activeChallenge.challenged_stats?.[0]?.average_points?.toFixed(1) || '0.0'
+            } pts • {activeChallenge.opponent_team.name}: {activeChallenge.is_challenger
+              ? activeChallenge.challenged_stats?.[0]?.average_points?.toFixed(1) || '0.0'
+              : activeChallenge.challenger_stats?.[0]?.average_points?.toFixed(1) || '0.0'
+            } pts
+          </div>
+        </div>
+        <button
+          onClick={() => router.push(`/challenges/${activeChallenge.id}`)}
+          className="bg-yellow-500 hover:bg-yellow-600 text-black px-4 py-2 rounded-lg font-semibold transition whitespace-nowrap"
+        >
+          View Challenge
+        </button>
+      </div>
+    </div>
+  );
+}
 
 export default function DrillsList({ user, userProfile }) {
   const router = useRouter();
@@ -20,7 +116,6 @@ export default function DrillsList({ user, userProfile }) {
   const fetchDrills = async () => {
     try {
       const activeTeamId = userProfile.active_team_id;
-      console.log('1. Player active_team_id:', activeTeamId);
 
       if (!activeTeamId) {
         setDrills([]);
@@ -35,9 +130,6 @@ export default function DrillsList({ user, userProfile }) {
         .eq('id', activeTeamId)
         .single();
 
-      console.log('2. Team data:', teamData);
-      console.log('2. Team error:', teamError);
-
       if (teamError) throw teamError;
 
       if (!teamData) {
@@ -48,8 +140,6 @@ export default function DrillsList({ user, userProfile }) {
 
       setTeamName(teamData.name);
 
-      console.log('3. Fetching drills for team_id:', activeTeamId);
-
       // Fetch drills for this specific team
       const { data, error } = await supabase
         .from('drills')
@@ -58,11 +148,6 @@ export default function DrillsList({ user, userProfile }) {
         .eq('is_active', true)
         .order('sort_order', { ascending: true })
         .order('created_at', { ascending: false });
-
-      console.log('4. Drills found:', data?.length || 0);
-      console.log('4. All drill data:', JSON.stringify(data, null, 2));
-      console.log('4. Drill names:', data?.map(d => d.name));
-      console.log('4. Fetch error:', error);
 
       if (error) throw error;
       setDrills(data || []);
@@ -177,9 +262,6 @@ export default function DrillsList({ user, userProfile }) {
     }
   };
 
-  console.log('5. Drills state:', drills);
-  console.log('6. Loading state:', loading);
-
   const startDrill = (drill) => {
     if (drill.daily_limit && completedToday.has(drill.id)) {
       alert('⏰ You\'ve already completed this drill today! Come back tomorrow for more points.');
@@ -224,6 +306,14 @@ export default function DrillsList({ user, userProfile }) {
           </h1>
           <p className="text-gray-400 text-sm sm:text-base">Select a drill to start training</p>
         </div>
+
+        {/* Active Challenge Banner - Players Only */}
+        {userProfile?.role === 'player' && (
+          <ActiveChallengeBanner
+            userId={user?.id}
+            teamId={userProfile?.active_team_id}
+          />
+        )}
 
         {drills.length === 0 ? (
           <div className="bg-gray-800 rounded-xl p-12 border border-gray-700 text-center">

@@ -822,7 +822,7 @@ export default function PlayerDrill({ user, userProfile }) {
           )}
 
           {completed && drill.type === 'stopwatch' && (
-            <div>
+            <div className="flex-1 flex flex-col items-center justify-center">
               <div className="text-6xl mb-4">🎉</div>
               <div className="text-2xl font-bold text-white mb-4">Stopwatch Complete!</div>
               <div className="text-gray-400 mb-4">

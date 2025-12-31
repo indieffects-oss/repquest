@@ -1,4 +1,4 @@
-// components/Navbar.js - v0.49 with Bots Link
+// components/Navbar.js - v0.51 with organized dropdowns
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { supabase } from '../lib/supabaseClient';
@@ -90,6 +90,7 @@ export default function Navbar({ user, userProfile, onProfileUpdate }) {
   };
 
   const isActive = (path) => router.pathname === path;
+  const isInGroup = (paths) => paths.some(path => router.pathname.startsWith(path));
 
   // Get CSS variables for team colors
   const primaryColor = getComputedStyle(document.documentElement).getPropertyValue('--color-primary').trim() || '#3B82F6';
@@ -118,50 +119,79 @@ export default function Navbar({ user, userProfile, onProfileUpdate }) {
           <div className="hidden md:flex items-center gap-2">
             {userProfile?.role === 'coach' ? (
               <>
-                <Link
-                  href="/dashboard"
-                  className={`px-4 py-2 rounded-lg transition ${isActive('/dashboard')
-                    ? 'bg-white/20 text-white backdrop-blur-sm'
-                    : 'text-white/90 hover:bg-white/10'
-                    }`}
-                >
-                  Drills
-                </Link>
-                <Link
-                  href="/analytics"
-                  className={`px-4 py-2 rounded-lg transition ${isActive('/analytics')
-                    ? 'bg-white/20 text-white backdrop-blur-sm'
-                    : 'text-white/90 hover:bg-white/10'
-                    }`}
-                >
-                  Analytics
-                </Link>
-                <Link
-                  href="/scores"
-                  className={`px-4 py-2 rounded-lg transition ${isActive('/scores')
-                    ? 'bg-white/20 text-white backdrop-blur-sm'
-                    : 'text-white/90 hover:bg-white/10'
-                    }`}
-                >
-                  Scores
-                </Link>
+                {/* Training Dropdown */}
+                <div className="relative group">
+                  <button className={`px-4 py-2 rounded-lg transition flex items-center gap-1 ${isInGroup(['/dashboard', '/challenges', '/bots'])
+                      ? 'bg-white/20 text-white backdrop-blur-sm'
+                      : 'text-white/90 hover:bg-white/10'
+                    }`}>
+                    Training
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+                  <div className="absolute left-0 mt-2 w-48 bg-gray-800 border border-gray-700 rounded-lg shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50">
+                    <Link
+                      href="/dashboard"
+                      className={`block px-4 py-3 hover:bg-gray-700 transition ${isActive('/dashboard') ? 'bg-blue-900/30 text-blue-400' : 'text-white'
+                        } first:rounded-t-lg`}
+                    >
+                      Drills
+                    </Link>
+                    <Link
+                      href="/challenges"
+                      className={`block px-4 py-3 hover:bg-gray-700 transition ${isActive('/challenges') ? 'bg-blue-900/30 text-blue-400' : 'text-white'
+                        }`}
+                    >
+                      Challenges
+                    </Link>
+                    <Link
+                      href="/bots"
+                      className={`block px-4 py-3 hover:bg-gray-700 transition ${isActive('/bots') ? 'bg-blue-900/30 text-blue-400' : 'text-white'
+                        } last:rounded-b-lg`}
+                    >
+                      Bots
+                    </Link>
+                  </div>
+                </div>
+
+                {/* Data Dropdown */}
+                <div className="relative group">
+                  <button className={`px-4 py-2 rounded-lg transition flex items-center gap-1 ${isInGroup(['/analytics', '/scores'])
+                      ? 'bg-white/20 text-white backdrop-blur-sm'
+                      : 'text-white/90 hover:bg-white/10'
+                    }`}>
+                    Data
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+                  <div className="absolute left-0 mt-2 w-48 bg-gray-800 border border-gray-700 rounded-lg shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50">
+                    <Link
+                      href="/analytics"
+                      className={`block px-4 py-3 hover:bg-gray-700 transition ${isActive('/analytics') ? 'bg-blue-900/30 text-blue-400' : 'text-white'
+                        } first:rounded-t-lg`}
+                    >
+                      Analytics
+                    </Link>
+                    <Link
+                      href="/scores"
+                      className={`block px-4 py-3 hover:bg-gray-700 transition ${isActive('/scores') ? 'bg-blue-900/30 text-blue-400' : 'text-white'
+                        } last:rounded-b-lg`}
+                    >
+                      Scores
+                    </Link>
+                  </div>
+                </div>
+
                 <Link
                   href="/teams"
                   className={`px-4 py-2 rounded-lg transition ${isActive('/teams')
-                    ? 'bg-white/20 text-white backdrop-blur-sm'
-                    : 'text-white/90 hover:bg-white/10'
+                      ? 'bg-white/20 text-white backdrop-blur-sm'
+                      : 'text-white/90 hover:bg-white/10'
                     }`}
                 >
                   Teams
-                </Link>
-                <Link
-                  href="/bots"
-                  className={`px-4 py-2 rounded-lg transition ${isActive('/bots')
-                    ? 'bg-white/20 text-white backdrop-blur-sm'
-                    : 'text-white/90 hover:bg-white/10'
-                    }`}
-                >
-                  🤖 Bots
                 </Link>
               </>
             ) : (
@@ -169,8 +199,8 @@ export default function Navbar({ user, userProfile, onProfileUpdate }) {
                 <Link
                   href="/drills"
                   className={`px-4 py-2 rounded-lg transition ${isActive('/drills')
-                    ? 'bg-white/20 text-white backdrop-blur-sm'
-                    : 'text-white/90 hover:bg-white/10'
+                      ? 'bg-white/20 text-white backdrop-blur-sm'
+                      : 'text-white/90 hover:bg-white/10'
                     }`}
                 >
                   Drills
@@ -178,8 +208,8 @@ export default function Navbar({ user, userProfile, onProfileUpdate }) {
                 <Link
                   href="/my-results"
                   className={`px-4 py-2 rounded-lg transition ${isActive('/my-results')
-                    ? 'bg-white/20 text-white backdrop-blur-sm'
-                    : 'text-white/90 hover:bg-white/10'
+                      ? 'bg-white/20 text-white backdrop-blur-sm'
+                      : 'text-white/90 hover:bg-white/10'
                     }`}
                 >
                   My Results
@@ -190,8 +220,8 @@ export default function Navbar({ user, userProfile, onProfileUpdate }) {
             <Link
               href="/leaderboard"
               className={`px-4 py-2 rounded-lg transition ${isActive('/leaderboard')
-                ? 'bg-white/20 text-white backdrop-blur-sm'
-                : 'text-white/90 hover:bg-white/10'
+                  ? 'bg-white/20 text-white backdrop-blur-sm'
+                  : 'text-white/90 hover:bg-white/10'
                 }`}
             >
               Leaderboard
@@ -200,8 +230,8 @@ export default function Navbar({ user, userProfile, onProfileUpdate }) {
             <Link
               href="/profile"
               className={`px-4 py-2 rounded-lg transition ${isActive('/profile')
-                ? 'bg-white/20 text-white backdrop-blur-sm'
-                : 'text-white/90 hover:bg-white/10'
+                  ? 'bg-white/20 text-white backdrop-blur-sm'
+                  : 'text-white/90 hover:bg-white/10'
                 }`}
             >
               Profile
@@ -210,8 +240,8 @@ export default function Navbar({ user, userProfile, onProfileUpdate }) {
             <Link
               href="/about"
               className={`px-4 py-2 rounded-lg transition ${isActive('/about')
-                ? 'bg-white/20 text-white backdrop-blur-sm'
-                : 'text-white/90 hover:bg-white/10'
+                  ? 'bg-white/20 text-white backdrop-blur-sm'
+                  : 'text-white/90 hover:bg-white/10'
                 }`}
             >
               About
@@ -240,8 +270,8 @@ export default function Navbar({ user, userProfile, onProfileUpdate }) {
                       onClick={() => handleTeamSwitch(team.id)}
                       disabled={switchingTeam}
                       className={`w-full text-left px-4 py-2 hover:bg-gray-700 transition ${team.id === userProfile.active_team_id
-                        ? 'bg-blue-900/30 text-blue-400'
-                        : 'text-white'
+                          ? 'bg-blue-900/30 text-blue-400'
+                          : 'text-white'
                         } first:rounded-t-lg last:rounded-b-lg`}
                     >
                       {team.id === userProfile.active_team_id && '✓ '}
@@ -300,8 +330,8 @@ export default function Navbar({ user, userProfile, onProfileUpdate }) {
                       onClick={() => handleTeamSwitch(team.id)}
                       disabled={switchingTeam}
                       className={`w-full text-left px-3 py-2 rounded transition ${team.id === userProfile.active_team_id
-                        ? 'bg-blue-600 text-white'
-                        : 'bg-white/10 text-white hover:bg-white/20'
+                          ? 'bg-blue-600 text-white'
+                          : 'bg-white/10 text-white hover:bg-white/20'
                         }`}
                     >
                       {team.id === userProfile.active_team_id && '✓ '}
@@ -314,55 +344,75 @@ export default function Navbar({ user, userProfile, onProfileUpdate }) {
 
             {userProfile?.role === 'coach' ? (
               <>
-                <Link
-                  href="/dashboard"
-                  onClick={() => setMobileMenuOpen(false)}
-                  className={`block px-4 py-3 rounded-lg transition ${isActive('/dashboard')
-                    ? 'bg-white/20 text-white backdrop-blur-sm'
-                    : 'text-white/90 hover:bg-white/10'
-                    }`}
-                >
-                  Drills
-                </Link>
-                <Link
-                  href="/analytics"
-                  onClick={() => setMobileMenuOpen(false)}
-                  className={`block px-4 py-3 rounded-lg transition ${isActive('/analytics')
-                    ? 'bg-white/20 text-white backdrop-blur-sm'
-                    : 'text-white/90 hover:bg-white/10'
-                    }`}
-                >
-                  Analytics
-                </Link>
-                <Link
-                  href="/scores"
-                  onClick={() => setMobileMenuOpen(false)}
-                  className={`block px-4 py-3 rounded-lg transition ${isActive('/scores')
-                    ? 'bg-white/20 text-white backdrop-blur-sm'
-                    : 'text-white/90 hover:bg-white/10'
-                    }`}
-                >
-                  Scores
-                </Link>
+                {/* Training Section */}
+                <div className="bg-white/5 rounded-lg p-2">
+                  <p className="text-white/60 text-xs px-2 mb-1 font-semibold uppercase">Training</p>
+                  <Link
+                    href="/dashboard"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className={`block px-4 py-3 rounded-lg transition ${isActive('/dashboard')
+                        ? 'bg-white/20 text-white backdrop-blur-sm'
+                        : 'text-white/90 hover:bg-white/10'
+                      }`}
+                  >
+                    Drills
+                  </Link>
+                  <Link
+                    href="/challenges"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className={`block px-4 py-3 rounded-lg transition ${isActive('/challenges')
+                        ? 'bg-white/20 text-white backdrop-blur-sm'
+                        : 'text-white/90 hover:bg-white/10'
+                      }`}
+                  >
+                    Challenges
+                  </Link>
+                  <Link
+                    href="/bots"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className={`block px-4 py-3 rounded-lg transition ${isActive('/bots')
+                        ? 'bg-white/20 text-white backdrop-blur-sm'
+                        : 'text-white/90 hover:bg-white/10'
+                      }`}
+                  >
+                    Bots
+                  </Link>
+                </div>
+
+                {/* Data Section */}
+                <div className="bg-white/5 rounded-lg p-2">
+                  <p className="text-white/60 text-xs px-2 mb-1 font-semibold uppercase">Data</p>
+                  <Link
+                    href="/analytics"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className={`block px-4 py-3 rounded-lg transition ${isActive('/analytics')
+                        ? 'bg-white/20 text-white backdrop-blur-sm'
+                        : 'text-white/90 hover:bg-white/10'
+                      }`}
+                  >
+                    Analytics
+                  </Link>
+                  <Link
+                    href="/scores"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className={`block px-4 py-3 rounded-lg transition ${isActive('/scores')
+                        ? 'bg-white/20 text-white backdrop-blur-sm'
+                        : 'text-white/90 hover:bg-white/10'
+                      }`}
+                  >
+                    Scores
+                  </Link>
+                </div>
+
                 <Link
                   href="/teams"
                   onClick={() => setMobileMenuOpen(false)}
                   className={`block px-4 py-3 rounded-lg transition ${isActive('/teams')
-                    ? 'bg-white/20 text-white backdrop-blur-sm'
-                    : 'text-white/90 hover:bg-white/10'
+                      ? 'bg-white/20 text-white backdrop-blur-sm'
+                      : 'text-white/90 hover:bg-white/10'
                     }`}
                 >
                   Teams
-                </Link>
-                <Link
-                  href="/bots"
-                  onClick={() => setMobileMenuOpen(false)}
-                  className={`block px-4 py-3 rounded-lg transition ${isActive('/bots')
-                    ? 'bg-white/20 text-white backdrop-blur-sm'
-                    : 'text-white/90 hover:bg-white/10'
-                    }`}
-                >
-                  🤖 Bots
                 </Link>
               </>
             ) : (
@@ -371,8 +421,8 @@ export default function Navbar({ user, userProfile, onProfileUpdate }) {
                   href="/drills"
                   onClick={() => setMobileMenuOpen(false)}
                   className={`block px-4 py-3 rounded-lg transition ${isActive('/drills')
-                    ? 'bg-white/20 text-white backdrop-blur-sm'
-                    : 'text-white/90 hover:bg-white/10'
+                      ? 'bg-white/20 text-white backdrop-blur-sm'
+                      : 'text-white/90 hover:bg-white/10'
                     }`}
                 >
                   Drills
@@ -381,8 +431,8 @@ export default function Navbar({ user, userProfile, onProfileUpdate }) {
                   href="/my-results"
                   onClick={() => setMobileMenuOpen(false)}
                   className={`block px-4 py-3 rounded-lg transition ${isActive('/my-results')
-                    ? 'bg-white/20 text-white backdrop-blur-sm'
-                    : 'text-white/90 hover:bg-white/10'
+                      ? 'bg-white/20 text-white backdrop-blur-sm'
+                      : 'text-white/90 hover:bg-white/10'
                     }`}
                 >
                   My Results
@@ -394,8 +444,8 @@ export default function Navbar({ user, userProfile, onProfileUpdate }) {
               href="/leaderboard"
               onClick={() => setMobileMenuOpen(false)}
               className={`block px-4 py-3 rounded-lg transition ${isActive('/leaderboard')
-                ? 'bg-white/20 text-white backdrop-blur-sm'
-                : 'text-white/90 hover:bg-white/10'
+                  ? 'bg-white/20 text-white backdrop-blur-sm'
+                  : 'text-white/90 hover:bg-white/10'
                 }`}
             >
               Leaderboard
@@ -405,8 +455,8 @@ export default function Navbar({ user, userProfile, onProfileUpdate }) {
               href="/profile"
               onClick={() => setMobileMenuOpen(false)}
               className={`block px-4 py-3 rounded-lg transition ${isActive('/profile')
-                ? 'bg-white/20 text-white backdrop-blur-sm'
-                : 'text-white/90 hover:bg-white/10'
+                  ? 'bg-white/20 text-white backdrop-blur-sm'
+                  : 'text-white/90 hover:bg-white/10'
                 }`}
             >
               Profile
@@ -416,8 +466,8 @@ export default function Navbar({ user, userProfile, onProfileUpdate }) {
               href="/about"
               onClick={() => setMobileMenuOpen(false)}
               className={`block px-4 py-3 rounded-lg transition ${isActive('/about')
-                ? 'bg-white/20 text-white backdrop-blur-sm'
-                : 'text-white/90 hover:bg-white/10'
+                  ? 'bg-white/20 text-white backdrop-blur-sm'
+                  : 'text-white/90 hover:bg-white/10'
                 }`}
             >
               About
