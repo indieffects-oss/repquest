@@ -1,3 +1,6 @@
+console.log('SUPABASE_URL:', process.env.NEXT_PUBLIC_SUPABASE_URL);
+console.log('ANON_KEY first 50 chars:', process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.substring(0, 50));
+
 // pages/index.js - Updated with Terms & Privacy
 import { useState } from 'react';
 import { useRouter } from 'next/router';

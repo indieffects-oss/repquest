@@ -206,6 +206,15 @@ export default function Navbar({ user, userProfile, onProfileUpdate }) {
                   Drills
                 </Link>
                 <Link
+                  href="/measurements"
+                  className={`px-4 py-2 rounded-lg transition ${isActive('/measurements')
+                      ? 'bg-white/20 text-white backdrop-blur-sm'
+                      : 'text-white/90 hover:bg-white/10'
+                    }`}
+                >
+                  Measurements
+                </Link>
+                <Link
                   href="/my-results"
                   className={`px-4 py-2 rounded-lg transition ${isActive('/my-results')
                       ? 'bg-white/20 text-white backdrop-blur-sm'
@@ -426,6 +435,16 @@ export default function Navbar({ user, userProfile, onProfileUpdate }) {
                     }`}
                 >
                   Drills
+                </Link>
+                <Link
+                  href="/measurements"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className={`block px-4 py-3 rounded-lg transition ${isActive('/measurements')
+                      ? 'bg-white/20 text-white backdrop-blur-sm'
+                      : 'text-white/90 hover:bg-white/10'
+                    }`}
+                >
+                  Measurements
                 </Link>
                 <Link
                   href="/my-results"

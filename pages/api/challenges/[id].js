@@ -1,4 +1,4 @@
-// pages/api/challenges/[id].js
+// pages/api/challenges/[id].js - Updated to include drill counts
 import { supabaseAdmin } from '../../../lib/supabaseAdmin';
 
 export default async function handler(req, res) {
@@ -15,7 +15,6 @@ export default async function handler(req, res) {
     try {
         const supabase = supabaseAdmin;
 
-        // Get user from session
         const authHeader = req.headers.authorization;
         if (!authHeader) {
             return res.status(401).json({ error: 'Unauthorized' });
@@ -32,11 +31,11 @@ export default async function handler(req, res) {
         const { data: challenge, error: challengeError } = await supabase
             .from('team_challenges')
             .select(`
-        *,
-        challenger_team:teams!challenger_team_id(id, name, sport, logo_url, primary_color, secondary_color),
-        challenged_team:teams!challenged_team_id(id, name, sport, logo_url, primary_color, secondary_color),
-        winner_team:teams!winner_team_id(id, name)
-      `)
+                *,
+                challenger_team:teams!challenger_team_id(id, name, sport, logo_url, primary_color, secondary_color),
+                challenged_team:teams!challenged_team_id(id, name, sport, logo_url, primary_color, secondary_color),
+                winner_team:teams!winner_team_id(id, name)
+            `)
             .eq('id', id)
             .single();
 
@@ -50,6 +49,10 @@ export default async function handler(req, res) {
             .order('created_at');
 
         if (drillsError) throw drillsError;
+
+        // Count drills by team
+        const challengerDrillCount = drills.filter(d => d.source_team_id === challenge.challenger_team_id).length;
+        const challengedDrillCount = drills.filter(d => d.source_team_id === challenge.challenged_team_id).length;
 
         // Get team stats
         const { data: teamStats, error: statsError } = await supabase
@@ -89,6 +92,8 @@ export default async function handler(req, res) {
             success: true,
             challenge: {
                 ...challenge,
+                challenger_drill_count: challengerDrillCount,
+                challenged_drill_count: challengedDrillCount,
                 time_remaining: timeRemaining,
                 time_remaining_formatted: timeRemaining ? formatTimeRemaining(timeRemaining) : null
             },

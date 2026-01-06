@@ -1,4 +1,4 @@
-// pages/challenges.js - Production version (no debug logging)
+// pages/challenges.js - Updated with "Add Drills" flow
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import { supabase } from '../lib/supabaseClient';
@@ -41,7 +41,7 @@ export default function Challenges({ user, userProfile }) {
             const result = await response.json();
 
             if (result.success) {
-                // Check if any scheduled challenges should be activated (Backup to cron)
+                // Check if any scheduled challenges should be activated
                 const now = new Date();
                 const scheduledToActivate = result.challenges.filter(c =>
                     c.status === 'scheduled' &&
@@ -49,7 +49,6 @@ export default function Challenges({ user, userProfile }) {
                 );
 
                 if (scheduledToActivate.length > 0) {
-                    // Activate them
                     for (const challenge of scheduledToActivate) {
                         await supabase
                             .from('team_challenges')
@@ -57,7 +56,6 @@ export default function Challenges({ user, userProfile }) {
                             .eq('id', challenge.id)
                             .eq('status', 'scheduled');
                     }
-                    // Refetch to show updated statuses
                     setTimeout(() => fetchChallenges(), 500);
                     return;
                 }
@@ -79,36 +77,6 @@ export default function Challenges({ user, userProfile }) {
             console.error('Error fetching challenges:', err);
         } finally {
             setLoading(false);
-        }
-    };
-
-    const handleAccept = async (challengeId) => {
-        if (!confirm('Accept this challenge?')) return;
-
-        setResponding(challengeId);
-        try {
-            const { data: { session } } = await supabase.auth.getSession();
-            const response = await fetch('/api/challenges/accept', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${session.access_token}`
-                },
-                body: JSON.stringify({ challenge_id: challengeId })
-            });
-
-            const result = await response.json();
-            if (result.success) {
-                alert('Challenge accepted! Let the competition begin! 🏆');
-                fetchChallenges();
-            } else {
-                alert('Failed to accept challenge: ' + result.error);
-            }
-        } catch (err) {
-            console.error('Error accepting challenge:', err);
-            alert('Failed to accept challenge');
-        } finally {
-            setResponding(null);
         }
     };
 
@@ -262,7 +230,7 @@ export default function Challenges({ user, userProfile }) {
                                 >
                                     <div className="flex items-start justify-between mb-4">
                                         <div className="flex-1">
-                                            <div className="flex items-center gap-3 mb-2">
+                                            <div className="flex items-center gap-3 mb-2 flex-wrap">
                                                 <h3 className="text-xl font-bold text-white">
                                                     vs {challenge.opponent_team.name}
                                                 </h3>
@@ -279,9 +247,14 @@ export default function Challenges({ user, userProfile }) {
                                                         YOU CHALLENGED
                                                     </span>
                                                 )}
+                                                {needsResponse && (
+                                                    <span className="text-xs bg-orange-600 text-white px-2 py-1 rounded animate-pulse">
+                                                        NEEDS YOUR RESPONSE
+                                                    </span>
+                                                )}
                                             </div>
 
-                                            {challenge.challenger_message && isChallenger && (
+                                            {challenge.challenger_message && (
                                                 <p className="text-gray-400 text-sm mb-2 italic">
                                                     "{challenge.challenger_message}"
                                                 </p>
@@ -342,14 +315,14 @@ export default function Challenges({ user, userProfile }) {
                                         </div>
 
                                         <div className="flex flex-col gap-2">
-                                            {needsResponse && (
+                                            {needsResponse ? (
                                                 <>
                                                     <button
-                                                        onClick={() => handleAccept(challenge.id)}
+                                                        onClick={() => router.push(`/challenges/${challenge.id}/add-drills`)}
                                                         disabled={responding === challenge.id}
                                                         className="bg-green-600 hover:bg-green-700 disabled:bg-gray-600 text-white px-4 py-2 rounded-lg text-sm font-semibold transition whitespace-nowrap"
                                                     >
-                                                        {responding === challenge.id ? '...' : '✓ Accept'}
+                                                        ✓ Add Drills & Accept
                                                     </button>
                                                     <button
                                                         onClick={() => handleDecline(challenge.id)}
@@ -359,13 +332,14 @@ export default function Challenges({ user, userProfile }) {
                                                         {responding === challenge.id ? '...' : '✗ Decline'}
                                                     </button>
                                                 </>
+                                            ) : (
+                                                <button
+                                                    onClick={() => router.push(`/challenges/${challenge.id}`)}
+                                                    className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition whitespace-nowrap"
+                                                >
+                                                    View Details
+                                                </button>
                                             )}
-                                            <button
-                                                onClick={() => router.push(`/challenges/${challenge.id}`)}
-                                                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition whitespace-nowrap"
-                                            >
-                                                View Details
-                                            </button>
                                         </div>
                                     </div>
                                 </div>
