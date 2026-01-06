@@ -1,4 +1,4 @@
-// pages/api/measurements/log.js - Log a new measurement with custom metrics
+// pages/api/measurements/log.js - Log a new measurement (supports both new and existing metrics)
 import { supabaseAdmin } from '../../../lib/supabaseAdmin';
 
 export default async function handler(req, res) {
@@ -6,10 +6,18 @@ export default async function handler(req, res) {
         return res.status(405).json({ error: 'Method not allowed' });
     }
 
-    const { category_id, name, unit, value, higher_is_better } = req.body;
+    const { category_id, name, unit, value, higher_is_better, metric_id } = req.body;
 
-    if (!category_id || !name || !unit || value === undefined || value === null) {
-        return res.status(400).json({ error: 'category_id, name, unit, and value are required' });
+    // Value is always required
+    if (value === undefined || value === null) {
+        return res.status(400).json({ error: 'value is required' });
+    }
+
+    // Either metric_id OR (category_id + name + unit) is required
+    if (!metric_id && (!category_id || !name || !unit)) {
+        return res.status(400).json({
+            error: 'Either metric_id OR (category_id, name, and unit) are required'
+        });
     }
 
     try {
@@ -28,24 +36,41 @@ export default async function handler(req, res) {
             return res.status(401).json({ error: 'Unauthorized' });
         }
 
-        // Get or create user metric
-        const { data: metricId, error: metricError } = await supabase
-            .rpc('get_or_create_user_metric', {
-                p_user_id: user.id,
-                p_category_id: category_id,
-                p_name: name,
-                p_unit: unit,
-                p_higher_is_better: higher_is_better !== false
-            });
+        let finalMetricId = metric_id;
 
-        if (metricError) throw metricError;
+        // If metric_id provided, verify it belongs to this user
+        if (metric_id) {
+            const { data: existingMetric, error: verifyError } = await supabase
+                .from('user_metrics')
+                .select('id')
+                .eq('id', metric_id)
+                .eq('user_id', user.id)
+                .single();
+
+            if (verifyError || !existingMetric) {
+                return res.status(403).json({ error: 'Metric not found or access denied' });
+            }
+        } else {
+            // Get or create user metric using the function
+            const { data: createdMetricId, error: metricError } = await supabase
+                .rpc('get_or_create_user_metric', {
+                    p_user_id: user.id,
+                    p_category_id: category_id,
+                    p_name: name,
+                    p_unit: unit,
+                    p_higher_is_better: higher_is_better !== false
+                });
+
+            if (metricError) throw metricError;
+            finalMetricId = createdMetricId;
+        }
 
         // Insert measurement
         const { data: measurement, error: insertError } = await supabase
             .from('player_measurements')
             .insert({
                 user_id: user.id,
-                metric_id: metricId,
+                metric_id: finalMetricId,
                 value: parseFloat(value)
             })
             .select()
@@ -56,7 +81,7 @@ export default async function handler(req, res) {
         return res.status(200).json({
             success: true,
             measurement,
-            metric_id: metricId
+            metric_id: finalMetricId
         });
 
     } catch (error) {

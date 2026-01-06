@@ -1,4 +1,4 @@
-// pages/measurements/history/[id].js - View measurement history for a metric
+// pages/measurements/history/[id].js - View measurement history (FIXED quick log)
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import { supabase } from '../../../lib/supabaseClient';
@@ -101,11 +101,8 @@ export default function MeasurementHistory({ user, userProfile }) {
                     'Authorization': `Bearer ${session.access_token}`
                 },
                 body: JSON.stringify({
-                    category_id: metric.category.id,
-                    name: metric.name,
-                    unit: metric.unit,
-                    value: parseFloat(quickValue),
-                    higher_is_better: metric.higher_is_better
+                    metric_id: id, // Use metric_id instead of all fields
+                    value: parseFloat(quickValue)
                 })
             });
 
@@ -218,11 +215,11 @@ export default function MeasurementHistory({ user, userProfile }) {
                         {stats.improvement !== null ? (
                             <>
                                 <div className={`text-3xl font-bold mb-1 ${(metric.higher_is_better && stats.improvement > 0) ||
-                                        (!metric.higher_is_better && stats.improvement < 0)
-                                        ? 'text-green-400'
-                                        : stats.improvement === 0
-                                            ? 'text-gray-400'
-                                            : 'text-red-400'
+                                    (!metric.higher_is_better && stats.improvement < 0)
+                                    ? 'text-green-400'
+                                    : stats.improvement === 0
+                                        ? 'text-gray-400'
+                                        : 'text-red-400'
                                     }`}>
                                     {stats.improvement > 0 ? '+' : ''}{stats.improvement.toFixed(1)} {metric.unit}
                                 </div>
@@ -263,8 +260,8 @@ export default function MeasurementHistory({ user, userProfile }) {
                                     <div
                                         key={measurement.id}
                                         className={`p-4 rounded-lg border-2 ${isBest
-                                                ? 'bg-yellow-900/20 border-yellow-700'
-                                                : 'bg-gray-700/50 border-gray-600'
+                                            ? 'bg-yellow-900/20 border-yellow-700'
+                                            : 'bg-gray-700/50 border-gray-600'
                                             }`}
                                     >
                                         <div className="flex items-center justify-between">
@@ -280,9 +277,9 @@ export default function MeasurementHistory({ user, userProfile }) {
                                                     )}
                                                     {change !== null && change !== 0 && (
                                                         <span className={`text-sm font-semibold ${(metric.higher_is_better && change > 0) ||
-                                                                (!metric.higher_is_better && change < 0)
-                                                                ? 'text-green-400'
-                                                                : 'text-red-400'
+                                                            (!metric.higher_is_better && change < 0)
+                                                            ? 'text-green-400'
+                                                            : 'text-red-400'
                                                             }`}>
                                                             {change > 0 ? '+' : ''}{change.toFixed(1)}
                                                         </span>
