@@ -2,7 +2,7 @@
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { supabase } from '../lib/supabaseClient';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 
 export default function Navbar({ user, userProfile, onProfileUpdate }) {
   const router = useRouter();
@@ -26,7 +26,7 @@ export default function Navbar({ user, userProfile, onProfileUpdate }) {
           .from('team_members')
           .select(`
             team_id,
-            teams (id, name, sport)
+            teams (id, name, sport, season_end_date)
           `)
           .eq('user_id', user.id);
 
@@ -36,7 +36,7 @@ export default function Navbar({ user, userProfile, onProfileUpdate }) {
         // Coaches: Get teams they own
         const { data, error } = await supabase
           .from('teams')
-          .select('id, name, sport')
+          .select('id, name, sport, season_end_date')
           .eq('coach_id', user.id)
           .order('created_at', { ascending: true });
 
@@ -49,7 +49,29 @@ export default function Navbar({ user, userProfile, onProfileUpdate }) {
       console.error('Error fetching teams:', err);
     }
   };
+  
+  const sortedTeams = useMemo(() => {
+    if (!myTeams || myTeams.length === 0) return [];
 
+    const now = new Date();
+
+    return [...myTeams].sort((a, b) => {
+      const aEnd = a.season_end_date ? new Date(a.season_end_date) : null;
+      const bEnd = b.season_end_date ? new Date(b.season_end_date) : null;
+
+      // Active teams first (no end date or end date in future)
+      const aActive = !aEnd || now < aEnd;
+      const bActive = !bEnd || now < bEnd;
+
+      if (aActive && !bActive) return -1;
+      if (!aActive && bActive) return 1;
+
+      // Within same status, sort by name
+      return a.name.localeCompare(b.name);
+    });
+  }, [myTeams]);
+
+  
   const handleTeamSwitch = async (teamId) => {
     if (teamId === userProfile.active_team_id) return;
 
@@ -214,15 +236,15 @@ export default function Navbar({ user, userProfile, onProfileUpdate }) {
                 >
                   Measurements
                 </Link>
-                <Link
-                  href="/my-results"
-                  className={`px-4 py-2 rounded-lg transition ${isActive('/my-results')
+                  <Link
+                    href="/my-results"
+                    className={`px-4 py-2 rounded-lg transition whitespace-nowrap ${isActive('/my-results')
                       ? 'bg-white/20 text-white backdrop-blur-sm'
                       : 'text-white/90 hover:bg-white/10'
-                    }`}
-                >
-                  My Results
-                </Link>
+                      }`}
+                  >
+                    My Results
+                  </Link>
               </>
             )}
 
@@ -244,6 +266,16 @@ export default function Navbar({ user, userProfile, onProfileUpdate }) {
                 }`}
             >
               Profile
+            </Link>
+
+            <Link
+              href="/public-teams"
+              className={`px-4 py-2 rounded-lg transition whitespace-nowrap ${isActive('/public-teams')
+                ? 'bg-white/20 text-white backdrop-blur-sm'
+                : 'text-white/90 hover:bg-white/10'
+                }`}
+            >
+              Public Teams
             </Link>
 
             <Link
@@ -273,20 +305,27 @@ export default function Navbar({ user, userProfile, onProfileUpdate }) {
 
                 {/* Dropdown */}
                 <div className="absolute right-0 mt-2 w-48 bg-gray-800 border border-gray-700 rounded-lg shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50">
-                  {myTeams.map(team => (
-                    <button
-                      key={team.id}
-                      onClick={() => handleTeamSwitch(team.id)}
-                      disabled={switchingTeam}
-                      className={`w-full text-left px-4 py-2 hover:bg-gray-700 transition ${team.id === userProfile.active_team_id
-                          ? 'bg-blue-900/30 text-blue-400'
-                          : 'text-white'
-                        } first:rounded-t-lg last:rounded-b-lg`}
-                    >
-                      {team.id === userProfile.active_team_id && '✓ '}
-                      {team.name}
-                    </button>
-                  ))}
+                  {sortedTeams.map(team => {
+                    const now = new Date();
+                    const endDate = team.season_end_date ? new Date(team.season_end_date) : null;
+                    const isOutOfSeason = endDate && now > endDate;
+
+                    return (
+                      <button
+                        key={team.id}
+                        onClick={() => handleTeamSwitch(team.id)}
+                        disabled={switchingTeam}
+                        className={`w-full text-left px-4 py-2 hover:bg-gray-700 transition ${team.id === userProfile.active_team_id
+                            ? 'bg-blue-900/30 text-blue-400'
+                            : 'text-white'
+                          } ${isOutOfSeason ? 'opacity-60' : ''} first:rounded-t-lg last:rounded-b-lg`}
+                      >
+                        {team.id === userProfile.active_team_id && '✓ '}
+                        {team.name}
+                        {isOutOfSeason && <span className="text-xs ml-2 text-gray-400">(Ended)</span>}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -333,20 +372,27 @@ export default function Navbar({ user, userProfile, onProfileUpdate }) {
                   {userProfile?.role === 'coach' ? 'Working on:' : 'Switch Team:'}
                 </p>
                 <div className="space-y-1">
-                  {myTeams.map(team => (
-                    <button
-                      key={team.id}
-                      onClick={() => handleTeamSwitch(team.id)}
-                      disabled={switchingTeam}
-                      className={`w-full text-left px-3 py-2 rounded transition ${team.id === userProfile.active_team_id
-                          ? 'bg-blue-600 text-white'
-                          : 'bg-white/10 text-white hover:bg-white/20'
-                        }`}
-                    >
-                      {team.id === userProfile.active_team_id && '✓ '}
-                      {team.name}
-                    </button>
-                  ))}
+                  {sortedTeams.map(team => {
+                    const now = new Date();
+                    const endDate = team.season_end_date ? new Date(team.season_end_date) : null;
+                    const isOutOfSeason = endDate && now > endDate;
+
+                    return (
+                      <button
+                        key={team.id}
+                        onClick={() => handleTeamSwitch(team.id)}
+                        disabled={switchingTeam}
+                        className={`w-full text-left px-4 py-2 hover:bg-gray-700 transition ${team.id === userProfile.active_team_id
+                            ? 'bg-blue-900/30 text-blue-400'
+                            : 'text-white'
+                          } ${isOutOfSeason ? 'opacity-60' : ''} first:rounded-t-lg last:rounded-b-lg`}
+                      >
+                        {team.id === userProfile.active_team_id && '✓ '}
+                        {team.name}
+                        {isOutOfSeason && <span className="text-xs ml-2 text-gray-400">(Ended)</span>}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -479,6 +525,17 @@ export default function Navbar({ user, userProfile, onProfileUpdate }) {
                 }`}
             >
               Profile
+            </Link>
+
+            <Link
+              href="/public-teams"
+              onClick={() => setMobileMenuOpen(false)}
+              className={`block px-4 py-3 rounded-lg transition whitespace-nowrap ${isActive('/public-teams')
+                ? 'bg-white/20 text-white backdrop-blur-sm'
+                : 'text-white/90 hover:bg-white/10'
+                }`}
+            >
+              Public Teams
             </Link>
 
             <Link

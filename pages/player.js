@@ -144,6 +144,28 @@ export default function PlayerDrill({ user, userProfile }) {
     }
   };
 
+  const checkSeasonActive = async () => {
+    if (!userProfile?.active_team_id) return true;
+
+    const { data: team } = await supabase
+      .from('teams')
+      .select('season_end_date')
+      .eq('id', userProfile.active_team_id)
+      .single();
+
+    if (!team || !team.season_end_date) return true;
+
+    const now = new Date();
+    const endDate = new Date(team.season_end_date);
+
+    if (now > endDate) {
+      alert('🏁 This team\'s season has ended. You can view past results but cannot log new drills.');
+      return false;
+    }
+
+    return true;
+  };
+
   const fetchDrill = async () => {
     try {
       const { data, error } = await supabase
@@ -269,6 +291,15 @@ export default function PlayerDrill({ user, userProfile }) {
       return;
     }
 
+    // Check season status
+    const seasonActive = await checkSeasonActive();
+    if (!seasonActive) {
+      setAutoSubmitted(false);
+      hasAutoSubmitted.current = false;
+      router.push('/drills');
+      return;
+    }
+
     console.log('Starting handleSubmitNoReps...');
 
     // Set all guards immediately
@@ -367,6 +398,13 @@ export default function PlayerDrill({ user, userProfile }) {
 
   const handleSubmit = async () => {
     if (submitting) return;
+    
+    // Check season status
+    const seasonActive = await checkSeasonActive();
+    if (!seasonActive) {
+      router.push('/drills');
+      return;
+    }
 
     // Handle different drill types
     if (drill.type === 'reps') {
@@ -495,6 +533,14 @@ export default function PlayerDrill({ user, userProfile }) {
 
     if (submitting) return;
     setSubmitting(true);
+
+    // Check season status
+    const seasonActive = await checkSeasonActive();
+    if (!seasonActive) {
+      setSubmitting(false);
+      router.push('/drills');
+      return;
+    }
 
     try {
       const teamId = userProfile?.active_team_id;

@@ -3,6 +3,120 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import { supabase } from '../lib/supabaseClient';
 
+// Season Status Banner for Coaches
+function CoachSeasonBanner({ teamId, teamName }) {
+  const [seasonInfo, setSeasonInfo] = useState(null);
+
+  useEffect(() => {
+    if (!teamId) return;
+
+    const fetchSeasonInfo = async () => {
+      const { data } = await supabase
+        .from('teams')
+        .select('season_start_date, season_end_date')
+        .eq('id', teamId)
+        .single();
+
+      if (data && (data.season_start_date || data.season_end_date)) {
+        const now = new Date();
+        const start = data.season_start_date ? new Date(data.season_start_date) : null;
+        const end = data.season_end_date ? new Date(data.season_end_date) : null;
+
+        // Season hasn't started yet
+        if (start && now < start) {
+          const daysUntil = Math.ceil((start - now) / (1000 * 60 * 60 * 24));
+          setSeasonInfo({
+            type: 'upcoming',
+            daysLeft: daysUntil,
+            startDate: start.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),
+            endDate: end ? end.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : null
+          });
+        }
+        // Season is active
+        else if (end && now < end) {
+          const daysLeft = Math.ceil((end - now) / (1000 * 60 * 60 * 24));
+          setSeasonInfo({
+            type: 'active',
+            daysLeft: daysLeft,
+            startDate: start ? start.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : null,
+            endDate: end.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+          });
+        }
+        // Season has ended
+        else if (end && now > end) {
+          setSeasonInfo({
+            type: 'ended',
+            endDate: end.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+          });
+        }
+      }
+    };
+
+    fetchSeasonInfo();
+  }, [teamId]);
+
+  if (!seasonInfo) return null;
+
+  // Season upcoming
+  if (seasonInfo.type === 'upcoming') {
+    return (
+      <div className="bg-gradient-to-r from-blue-900/30 to-cyan-900/30 border border-blue-600 rounded-xl p-4 mb-6">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <span className="text-2xl">🗓️</span>
+            <div>
+              <h3 className="text-blue-300 font-bold">Season Starts in {seasonInfo.daysLeft} Day{seasonInfo.daysLeft !== 1 ? 's' : ''}</h3>
+              <p className="text-sm text-blue-200">
+                {seasonInfo.startDate} - {seasonInfo.endDate || 'No end date set'}
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Season active
+  if (seasonInfo.type === 'active') {
+    const isEndingSoon = seasonInfo.daysLeft <= 14;
+
+    return (
+      <div className={`bg-gradient-to-r ${isEndingSoon ? 'from-orange-900/30 to-red-900/30 border-orange-600' : 'from-green-900/30 to-emerald-900/30 border-green-600'} border rounded-xl p-4 mb-6`}>
+        <div className="flex items-center gap-3">
+          <span className="text-2xl">{isEndingSoon ? '⏰' : '✅'}</span>
+          <div>
+            <h3 className={`${isEndingSoon ? 'text-orange-300' : 'text-green-300'} font-bold`}>
+              {isEndingSoon ? `Season Ending in ${seasonInfo.daysLeft} Day${seasonInfo.daysLeft !== 1 ? 's' : ''}!` : 'Active Season'}
+            </h3>
+            <p className={`text-sm ${isEndingSoon ? 'text-orange-200' : 'text-green-200'}`}>
+              {seasonInfo.startDate ? `${seasonInfo.startDate} - ` : ''}Season ends {seasonInfo.endDate}
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Season ended
+  if (seasonInfo.type === 'ended') {
+    return (
+      <div className="bg-gradient-to-r from-red-900/30 to-gray-900/30 border border-red-600 rounded-xl p-4 mb-6">
+        <div className="flex items-center gap-3">
+          <span className="text-2xl">🏁</span>
+          <div>
+            <h3 className="text-red-300 font-bold">Season Ended</h3>
+            <p className="text-sm text-red-200">
+              Ended on {seasonInfo.endDate} • Players cannot log new drills
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return null;
+}
+
 export default function Dashboard({ user, userProfile }) {
   const router = useRouter();
   const [drills, setDrills] = useState([]);
@@ -430,6 +544,11 @@ export default function Dashboard({ user, userProfile }) {
             <h1 className="text-2xl sm:text-3xl font-bold text-white mb-2">Drill Management</h1>
             <p className="text-gray-400 text-sm sm:text-base">Create and manage drills for your team</p>
           </div>
+
+          {/* Season Status Banner */}
+          <CoachSeasonBanner
+            teamId={userProfile?.active_team_id}
+          />
 
           <button
             onClick={() => setShowLibrary(!showLibrary)}

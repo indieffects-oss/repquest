@@ -14,7 +14,9 @@ export default function Teams({ user, userProfile }) {
     name: '',
     sport: '',
     primary_color: '#3B82F6',
-    secondary_color: '#1E40AF'
+    secondary_color: '#1E40AF',
+    is_public: false,
+    skill_level: ''
   });
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteMessage, setInviteMessage] = useState('');
@@ -27,6 +29,91 @@ export default function Teams({ user, userProfile }) {
   // New state for team invite links
   const [teamInviteLinks, setTeamInviteLinks] = useState({});
   const [loadingTeamLink, setLoadingTeamLink] = useState({});
+
+  const getSeasonStatus = (team) => {
+    const now = new Date();
+    const start = team.season_start_date ? new Date(team.season_start_date) : null;
+    const end = team.season_end_date ? new Date(team.season_end_date) : null;
+
+    if (!start && !end) {
+      return (
+        <div className="mt-2 text-xs text-gray-400">
+          💡 Set season dates to track your team's schedule
+        </div>
+      );
+    }
+
+    if (start && now < start) {
+      const daysUntil = Math.ceil((start - now) / (1000 * 60 * 60 * 24));
+      return (
+        <div className="mt-2 px-3 py-2 bg-yellow-900/30 border border-yellow-700/50 rounded text-sm text-yellow-300">
+          ⏳ Season starts in <span className="font-bold">{daysUntil}</span> day{daysUntil !== 1 ? 's' : ''}
+        </div>
+      );
+    }
+
+    if (end && now > end) {
+      return (
+        <div className="mt-2 px-3 py-2 bg-red-900/30 border border-red-700/50 rounded text-sm text-red-300">
+          🏁 Season ended • Players can view data but cannot log new drills
+        </div>
+      );
+    }
+
+    if (end && now < end) {
+      const daysLeft = Math.ceil((end - now) / (1000 * 60 * 60 * 24));
+      return (
+        <div className="mt-2 px-3 py-2 bg-green-900/30 border border-green-700/50 rounded text-sm text-green-300">
+          ✅ Active Season • <span className="font-bold">{daysLeft}</span> day{daysLeft !== 1 ? 's' : ''} remaining
+        </div>
+      );
+    }
+
+    return null;
+  };
+
+  const updateSeasonDates = async (teamId) => {
+    const team = teams.find(t => t.id === teamId);
+    if (!team) return;
+
+    if (team.season_start_date && team.season_end_date) {
+      const start = new Date(team.season_start_date);
+      const end = new Date(team.season_end_date);
+
+      if (end <= start) {
+        alert('End date must be after start date');
+        return;
+      }
+    }
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+
+      const response = await fetch('/api/teams/update-season', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          team_id: teamId,
+          season_start_date: team.season_start_date || null,
+          season_end_date: team.season_end_date || null
+        })
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to update');
+      }
+
+      alert('✅ Season dates updated!');
+      fetchTeams();
+    } catch (err) {
+      console.error('Error updating season dates:', err);
+      alert('Failed to update season dates: ' + err.message);
+    }
+  };
 
   const sports = [
     'Basketball', 'Soccer', 'Baseball', 'Football', 'Volleyball',
@@ -294,6 +381,10 @@ export default function Teams({ user, userProfile }) {
       alert('Team name is required');
       return;
     }
+    if (newTeam.is_public && !newTeam.skill_level) {
+      alert('Please select a skill level for public teams');
+      return;
+    }
 
     try {
       const { data: createdTeam, error } = await supabase
@@ -303,7 +394,9 @@ export default function Teams({ user, userProfile }) {
           sport: newTeam.sport || 'Other',
           coach_id: user.id,
           primary_color: newTeam.primary_color,
-          secondary_color: newTeam.secondary_color
+          secondary_color: newTeam.secondary_color,
+          is_public: newTeam.is_public,
+          skill_level: newTeam.is_public ? newTeam.skill_level : null
         })
         .select()
         .single();
@@ -326,10 +419,16 @@ export default function Teams({ user, userProfile }) {
         name: '',
         sport: '',
         primary_color: '#3B82F6',
-        secondary_color: '#1E40AF'
+        secondary_color: '#1E40AF',
+        is_public: false,
+        skill_level: ''
       });
       setShowCreateForm(false);
       fetchTeams();
+
+      if (newTeam.is_public) {
+        alert('✅ Public team created! Players can now find and join this team.');
+      }
     } catch (err) {
       console.error('Error creating team:', err);
       alert('Failed to create team');
@@ -599,6 +698,39 @@ export default function Teams({ user, userProfile }) {
                 </div>
               </div>
 
+              {/* Public Team Options */}
+              <div className="border-t border-gray-700 pt-4 mt-4">
+                <label className="flex items-center gap-2 text-gray-300 cursor-pointer mb-4">
+                  <input
+                    type="checkbox"
+                    checked={newTeam.is_public}
+                    onChange={(e) => setNewTeam({ ...newTeam, is_public: e.target.checked })}
+                    className="w-4 h-4 rounded"
+                  />
+                  <span className="text-sm">🌍 Make this a public team (anyone can join)</span>
+                </label>
+
+                {newTeam.is_public && (
+                  <div>
+                    <label className="block text-gray-300 text-sm mb-2">Skill Level (for public teams) *</label>
+                    <select
+                      value={newTeam.skill_level || ''}
+                      onChange={(e) => setNewTeam({ ...newTeam, skill_level: e.target.value })}
+                      className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:border-blue-500"
+                    >
+                      <option value="">Select skill level...</option>
+                      <option value="beginner">🟢 Beginner</option>
+                      <option value="intermediate">🟡 Intermediate</option>
+                      <option value="advanced">🔴 Advanced</option>
+                    </select>
+
+                    <div className="mt-3 bg-purple-900/30 border border-purple-700 rounded-lg p-3 text-sm text-purple-200">
+                      💡 Public teams allow any player to join without an invite. Perfect for fitness communities!
+                    </div>
+                  </div>
+                )}
+              </div>
+
               <button
                 onClick={createTeam}
                 className="w-full bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg font-semibold transition"
@@ -676,7 +808,19 @@ export default function Teams({ user, userProfile }) {
                     ) : (
                       <div>
                         <div className="flex items-center gap-2 mb-1">
-                          <h3 className="text-xl font-bold text-white">{team.name}</h3>
+                            <h3 className="text-xl font-bold text-white">{team.name}</h3>
+                            <button
+                              onClick={() => setEditingTeamName(team.id)}
+                              className="text-blue-400 hover:text-blue-300 text-sm"
+                              title="Edit team name"
+                            >
+                              ✏️
+                            </button>
+                            {team.is_public && (
+                              <span className="text-xs bg-purple-600 px-2 py-1 rounded">
+                                🌍 PUBLIC
+                              </span>
+                            )}
                           <button
                             onClick={() => setEditingTeamName(team.id)}
                             className="text-blue-400 hover:text-blue-300 text-sm"
@@ -714,6 +858,53 @@ export default function Teams({ user, userProfile }) {
                       {team.team_members?.length || 0} players
                     </span>
                   </div>
+                </div>
+
+                {/* Season Dates Section */}
+                <div className="mb-4 p-4 bg-gray-700/50 rounded-lg border border-gray-600">
+                  <h4 className="text-sm text-gray-400 mb-3 font-semibold">⏰ Season Schedule</h4>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-gray-300 text-xs mb-1">Season Start</label>
+                      <input
+                        type="date"
+                        value={team.season_start_date || ''}
+                        onChange={(e) => {
+                          const updated = teams.map(t =>
+                            t.id === team.id ? { ...t, season_start_date: e.target.value } : t
+                          );
+                          setTeams(updated);
+                        }}
+                        className="w-full px-3 py-2 bg-gray-600 border border-gray-500 rounded text-white text-sm focus:outline-none focus:border-blue-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-gray-300 text-xs mb-1">Season End</label>
+                      <input
+                        type="date"
+                        value={team.season_end_date || ''}
+                        onChange={(e) => {
+                          const updated = teams.map(t =>
+                            t.id === team.id ? { ...t, season_end_date: e.target.value } : t
+                          );
+                          setTeams(updated);
+                        }}
+                        className="w-full px-3 py-2 bg-gray-600 border border-gray-500 rounded text-white text-sm focus:outline-none focus:border-blue-500"
+                      />
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => updateSeasonDates(team.id)}
+                    className="mt-3 w-full bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm font-semibold transition"
+                  >
+                    Save Season Dates
+                  </button>
+
+                  {/* Season Status Display */}
+                  {getSeasonStatus(team)}
                 </div>
 
                 {/* Color Customization */}

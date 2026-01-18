@@ -3,6 +3,132 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import { supabase } from '../lib/supabaseClient';
 
+// Season Warning Component - Shows start countdown AND end countdown
+function SeasonEndWarning({ teamId }) {
+  const [seasonInfo, setSeasonInfo] = useState(null);
+
+  useEffect(() => {
+    if (!teamId) return;
+
+    const fetchSeasonInfo = async () => {
+      const { data } = await supabase
+        .from('teams')
+        .select('season_start_date, season_end_date, name')
+        .eq('id', teamId)
+        .single();
+
+      if (data && (data.season_start_date || data.season_end_date)) {
+        const now = new Date();
+        const start = data.season_start_date ? new Date(data.season_start_date) : null;
+        const end = data.season_end_date ? new Date(data.season_end_date) : null;
+
+        // Season hasn't started yet
+        if (start && now < start) {
+          const daysUntil = Math.ceil((start - now) / (1000 * 60 * 60 * 24));
+          setSeasonInfo({
+            type: 'upcoming',
+            daysLeft: daysUntil,
+            date: start.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),
+            teamName: data.name
+          });
+        }
+        // Season is active and ending soon (within 14 days)
+        else if (end && now < end) {
+          const daysLeft = Math.ceil((end - now) / (1000 * 60 * 60 * 24));
+          if (daysLeft <= 14) {
+            setSeasonInfo({
+              type: 'ending',
+              daysLeft: daysLeft,
+              date: end.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),
+              teamName: data.name
+            });
+          }
+        }
+        // Season has ended
+        else if (end && now > end) {
+          setSeasonInfo({
+            type: 'ended',
+            date: end.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),
+            teamName: data.name
+          });
+        }
+      }
+    };
+
+    fetchSeasonInfo();
+  }, [teamId]);
+
+  if (!seasonInfo) return null;
+
+  // Season upcoming (hasn't started)
+  if (seasonInfo.type === 'upcoming') {
+    return (
+      <div className="bg-gradient-to-r from-blue-900/50 to-cyan-900/50 border-2 border-blue-500 rounded-xl p-4 mb-6">
+        <div className="flex items-center gap-3">
+          <span className="text-3xl">🗓️</span>
+          <div className="flex-1">
+            <h3 className="text-lg font-bold text-blue-300">
+              Season Starting Soon!
+            </h3>
+            <p className="text-white">
+              <span className="font-bold">{seasonInfo.daysLeft}</span> day{seasonInfo.daysLeft !== 1 ? 's' : ''} until {seasonInfo.teamName} season begins
+            </p>
+            <p className="text-blue-200 text-sm mt-1">
+              Starts: {seasonInfo.date}
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Season ending soon
+  if (seasonInfo.type === 'ending') {
+    return (
+      <div className="bg-gradient-to-r from-orange-900/50 to-red-900/50 border-2 border-orange-500 rounded-xl p-4 mb-6">
+        <div className="flex items-center gap-3">
+          <span className="text-3xl">⏰</span>
+          <div className="flex-1">
+            <h3 className="text-lg font-bold text-orange-300">
+              Season Ending Soon!
+            </h3>
+            <p className="text-white">
+              Only <span className="font-bold">{seasonInfo.daysLeft}</span> day{seasonInfo.daysLeft !== 1 ? 's' : ''} left to log drills this season
+            </p>
+            <p className="text-orange-200 text-sm mt-1">
+              Ends: {seasonInfo.date}
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Season ended
+  if (seasonInfo.type === 'ended') {
+    return (
+      <div className="bg-gradient-to-r from-red-900/50 to-gray-900/50 border-2 border-red-500 rounded-xl p-4 mb-6">
+        <div className="flex items-center gap-3">
+          <span className="text-3xl">🏁</span>
+          <div className="flex-1">
+            <h3 className="text-lg font-bold text-red-300">
+              Season Has Ended
+            </h3>
+            <p className="text-white">
+              The {seasonInfo.teamName} season ended on {seasonInfo.date}
+            </p>
+            <p className="text-red-200 text-sm mt-1">
+              You can view past results but cannot log new drills
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return null;
+}
+
 // Simple Active Challenge Banner Component
 function ActiveChallengeBanner({ userId, teamId }) {
   const [activeChallenge, setActiveChallenge] = useState(null);
@@ -315,6 +441,8 @@ export default function DrillsList({ user, userProfile }) {
           />
         )}
 
+        {/* Season End Warning */}
+        <SeasonEndWarning teamId={userProfile?.active_team_id} />
         {drills.length === 0 ? (
           <div className="bg-gray-800 rounded-xl p-12 border border-gray-700 text-center">
             <div className="text-6xl mb-4">🏃</div>
@@ -357,7 +485,7 @@ export default function DrillsList({ user, userProfile }) {
                     <p className="text-gray-300 text-sm mb-4 line-clamp-2" style={{ whiteSpace: 'pre-line' }}>{drill.description}</p>
                   )}
 
-                  {/* Top Score Display */}
+
                   {topScore && (
                     <div className="bg-gradient-to-r from-yellow-900/30 to-orange-900/30 border border-yellow-700/50 rounded-lg p-3 mb-4">
                       <div className="flex items-center gap-2">
