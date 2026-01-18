@@ -8,7 +8,10 @@ function SeasonEndWarning({ teamId }) {
   const [seasonInfo, setSeasonInfo] = useState(null);
 
   useEffect(() => {
-    if (!teamId) return;
+    if (!teamId) {
+      setSeasonInfo(null);
+      return;
+    }
 
     const fetchSeasonInfo = async () => {
       const { data } = await supabase
@@ -17,42 +20,53 @@ function SeasonEndWarning({ teamId }) {
         .eq('id', teamId)
         .single();
 
-      if (data && (data.season_start_date || data.season_end_date)) {
-        const now = new Date();
-        const start = data.season_start_date ? new Date(data.season_start_date) : null;
-        const end = data.season_end_date ? new Date(data.season_end_date) : null;
+      if (!data || (!data.season_start_date && !data.season_end_date)) {
+        setSeasonInfo(null);
+        return;
+      }
 
-        // Season hasn't started yet
-        if (start && now < start) {
-          const daysUntil = Math.ceil((start - now) / (1000 * 60 * 60 * 24));
+      const now = new Date();
+      const start = data.season_start_date ? new Date(data.season_start_date) : null;
+      const end = data.season_end_date ? new Date(data.season_end_date) : null;
+
+      // Season hasn't started yet
+      if (start && now < start) {
+        const daysUntil = Math.ceil((start - now) / (1000 * 60 * 60 * 24));
+        setSeasonInfo({
+          type: 'upcoming',
+          daysLeft: daysUntil,
+          date: start.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),
+          teamName: data.name
+        });
+        return;
+      }
+
+      // Season is active and ending soon (within 14 days)
+      if (end && now < end) {
+        const daysLeft = Math.ceil((end - now) / (1000 * 60 * 60 * 24));
+        if (daysLeft <= 14) {
           setSeasonInfo({
-            type: 'upcoming',
-            daysLeft: daysUntil,
-            date: start.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),
-            teamName: data.name
-          });
-        }
-        // Season is active and ending soon (within 14 days)
-        else if (end && now < end) {
-          const daysLeft = Math.ceil((end - now) / (1000 * 60 * 60 * 24));
-          if (daysLeft <= 14) {
-            setSeasonInfo({
-              type: 'ending',
-              daysLeft: daysLeft,
-              date: end.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),
-              teamName: data.name
-            });
-          }
-        }
-        // Season has ended
-        else if (end && now > end) {
-          setSeasonInfo({
-            type: 'ended',
+            type: 'ending',
+            daysLeft: daysLeft,
             date: end.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),
             teamName: data.name
           });
+          return;
         }
       }
+
+      // Season has ended
+      if (end && now > end) {
+        setSeasonInfo({
+          type: 'ended',
+          date: end.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),
+          teamName: data.name
+        });
+        return;
+      }
+
+      // No relevant season info to show
+      setSeasonInfo(null);
     };
 
     fetchSeasonInfo();
@@ -442,7 +456,9 @@ export default function DrillsList({ user, userProfile }) {
         )}
 
         {/* Season End Warning */}
-        <SeasonEndWarning teamId={userProfile?.active_team_id} />
+        {userProfile?.active_team_id && (
+          <SeasonEndWarning teamId={userProfile.active_team_id} />
+        )}
         {drills.length === 0 ? (
           <div className="bg-gray-800 rounded-xl p-12 border border-gray-700 text-center">
             <div className="text-6xl mb-4">🏃</div>

@@ -8,7 +8,10 @@ function CoachSeasonBanner({ teamId, teamName }) {
   const [seasonInfo, setSeasonInfo] = useState(null);
 
   useEffect(() => {
-    if (!teamId) return;
+    if (!teamId) {
+      setSeasonInfo(null);
+      return;
+    }
 
     const fetchSeasonInfo = async () => {
       const { data } = await supabase
@@ -17,39 +20,50 @@ function CoachSeasonBanner({ teamId, teamName }) {
         .eq('id', teamId)
         .single();
 
-      if (data && (data.season_start_date || data.season_end_date)) {
-        const now = new Date();
-        const start = data.season_start_date ? new Date(data.season_start_date) : null;
-        const end = data.season_end_date ? new Date(data.season_end_date) : null;
-
-        // Season hasn't started yet
-        if (start && now < start) {
-          const daysUntil = Math.ceil((start - now) / (1000 * 60 * 60 * 24));
-          setSeasonInfo({
-            type: 'upcoming',
-            daysLeft: daysUntil,
-            startDate: start.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),
-            endDate: end ? end.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : null
-          });
-        }
-        // Season is active
-        else if (end && now < end) {
-          const daysLeft = Math.ceil((end - now) / (1000 * 60 * 60 * 24));
-          setSeasonInfo({
-            type: 'active',
-            daysLeft: daysLeft,
-            startDate: start ? start.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : null,
-            endDate: end.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
-          });
-        }
-        // Season has ended
-        else if (end && now > end) {
-          setSeasonInfo({
-            type: 'ended',
-            endDate: end.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
-          });
-        }
+      if (!data || (!data.season_start_date && !data.season_end_date)) {
+        setSeasonInfo(null);
+        return;
       }
+
+      const now = new Date();
+      const start = data.season_start_date ? new Date(data.season_start_date) : null;
+      const end = data.season_end_date ? new Date(data.season_end_date) : null;
+
+      // Season hasn't started yet
+      if (start && now < start) {
+        const daysUntil = Math.ceil((start - now) / (1000 * 60 * 60 * 24));
+        setSeasonInfo({
+          type: 'upcoming',
+          daysLeft: daysUntil,
+          startDate: start.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),
+          endDate: end ? end.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : null
+        });
+        return;
+      }
+
+      // Season is active
+      if (end && now < end) {
+        const daysLeft = Math.ceil((end - now) / (1000 * 60 * 60 * 24));
+        setSeasonInfo({
+          type: 'active',
+          daysLeft: daysLeft,
+          startDate: start ? start.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : null,
+          endDate: end.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+        });
+        return;
+      }
+
+      // Season has ended
+      if (end && now > end) {
+        setSeasonInfo({
+          type: 'ended',
+          endDate: end.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+        });
+        return;
+      }
+
+      // No relevant season info to show
+      setSeasonInfo(null);
     };
 
     fetchSeasonInfo();
@@ -546,9 +560,11 @@ export default function Dashboard({ user, userProfile }) {
           </div>
 
           {/* Season Status Banner */}
-          <CoachSeasonBanner
-            teamId={userProfile?.active_team_id}
-          />
+          {userProfile?.active_team_id && (
+            <CoachSeasonBanner
+              teamId={userProfile.active_team_id}
+            />
+          )}
 
           <button
             onClick={() => setShowLibrary(!showLibrary)}
