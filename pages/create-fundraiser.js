@@ -43,12 +43,13 @@ export default function CreateFundraiser({ user, userProfile }) {
         try {
             const today = new Date().toISOString().split('T')[0];
 
-            // Check if player has any active fundraisers
+            // Check if player has any active fundraisers FOR THIS TEAM
             const { data, error } = await supabase
                 .from('fundraisers')
-                .select('id')
+                .select('id, team_id')
                 .eq('fundraiser_type', 'player')
                 .eq('owner_id', user.id)
+                .eq('team_id', userProfile.active_team_id)
                 .gte('end_date', today);
 
             if (error) throw error;
@@ -147,10 +148,10 @@ export default function CreateFundraiser({ user, userProfile }) {
                     <div className="bg-gray-800 rounded-xl p-12 border border-gray-700 text-center">
                         <div className="text-6xl mb-4">💰</div>
                         <h2 className="text-2xl font-bold text-white mb-4">
-                            You Already Have an Active Fundraiser
+                            You Already Have an Active Fundraiser for This Team
                         </h2>
                         <p className="text-gray-400 mb-6">
-                            You can only have one active fundraiser at a time. Wait for your current fundraiser to end before creating a new one.
+                            You can only have one active fundraiser per team at a time. Wait for your current fundraiser to end before creating a new one for this team, or switch to a different team to create another fundraiser.
                         </p>
                         <button
                             onClick={() => router.push('/my-fundraisers')}
