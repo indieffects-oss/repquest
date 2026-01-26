@@ -227,6 +227,16 @@ export default function Login() {
               {isSignUp ? 'Already have an account? Sign In' : "Don't have an account? Sign Up"}
             </button>
           </div>
+
+          <div className="text-center mt-4">
+            <button
+              onClick={() => router.push('/fan-signup')}
+              className="text-blue-400 hover:text-blue-300 text-sm font-semibold"
+            >
+              Sign up as a Supporter/Fan
+            </button>
+          </div>
+
         </form>
 
         {/* About Link */}

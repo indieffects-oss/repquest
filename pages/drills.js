@@ -1,7 +1,8 @@
-// pages/drills.js - v0.47 with challenge banner for players
+// pages/drills.js - v0.48 with fundraiser banner
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import { supabase } from '../lib/supabaseClient';
+import FundraiserBanner from '../components/FundraiserBanner';
 
 // Season Warning Component - Shows start countdown AND end countdown
 function SeasonEndWarning({ teamId }) {
@@ -246,12 +247,82 @@ export default function DrillsList({ user, userProfile }) {
   const [loading, setLoading] = useState(true);
   const [teamName, setTeamName] = useState('');
   const [topScores, setTopScores] = useState({});
+  const [activeFundraiser, setActiveFundraiser] = useState(null);
+  const [fundraiserPledges, setFundraiserPledges] = useState([]);
 
   useEffect(() => {
     if (!user || !userProfile) return;
     fetchDrills();
     fetchTodayCompletions();
+    fetchActiveFundraiser();
   }, [user, userProfile, userProfile?.active_team_id]);
+
+  const fetchActiveFundraiser = async () => {
+    if (!user || !userProfile?.active_team_id) return;
+
+    try {
+      const today = new Date().toISOString().split('T')[0];
+
+      // Get all fundraiser progress for this user
+      const { data: progressData, error: progressError } = await supabase
+        .from('fundraiser_progress')
+        .select(`
+                *,
+                fundraiser:fundraisers!fundraiser_id (
+                    id,
+                    title,
+                    description,
+                    start_date,
+                    end_date,
+                    status,
+                    estimated_max_levels,
+                    team_id
+                )
+            `)
+        .eq('user_id', user.id);
+
+      if (progressError) {
+        console.error('Error fetching fundraiser progress:', progressError);
+        setActiveFundraiser(null);
+        return;
+      }
+
+      if (!progressData || progressData.length === 0) {
+        setActiveFundraiser(null);
+        return;
+      }
+
+      // Filter for active fundraiser on current team (client-side)
+      const activeFundraisers = progressData.filter(prog => {
+        const f = prog.fundraiser;
+        return f &&
+          f.team_id === userProfile.active_team_id &&
+          f.start_date <= today &&
+          f.end_date >= today;
+      });
+
+      if (activeFundraisers.length === 0) {
+        setActiveFundraiser(null);
+        return;
+      }
+
+      // Use the first active fundraiser
+      const activeProgress = activeFundraisers[0];
+
+      // Get pledges for this fundraiser
+      const { data: pledges } = await supabase
+        .from('fundraiser_pledges')
+        .select('*')
+        .eq('fundraiser_id', activeProgress.fundraiser.id)
+        .or(`player_id.eq.${user.id},player_id.is.null`);
+
+      setActiveFundraiser(activeProgress);
+      setFundraiserPledges(pledges || []);
+    } catch (err) {
+      console.error('Error fetching active fundraiser:', err);
+      setActiveFundraiser(null);
+    }
+  };
 
   const fetchDrills = async () => {
     try {
@@ -447,6 +518,14 @@ export default function DrillsList({ user, userProfile }) {
           <p className="text-gray-400 text-sm sm:text-base">Select a drill to start training</p>
         </div>
 
+        {/* Active Fundraiser Banner */}
+        {activeFundraiser && fundraiserPledges.length > 0 && (
+          <FundraiserBanner
+            fundraiser={activeFundraiser}
+            pledges={fundraiserPledges}
+          />
+        )}
+
         {/* Active Challenge Banner - Players Only */}
         {userProfile?.role === 'player' && (
           <ActiveChallengeBanner
@@ -459,6 +538,7 @@ export default function DrillsList({ user, userProfile }) {
         {userProfile?.active_team_id && (
           <SeasonEndWarning teamId={userProfile.active_team_id} />
         )}
+
         {drills.length === 0 ? (
           <div className="bg-gray-800 rounded-xl p-12 border border-gray-700 text-center">
             <div className="text-6xl mb-4">🏃</div>
@@ -500,7 +580,6 @@ export default function DrillsList({ user, userProfile }) {
                   {drill.description && (
                     <p className="text-gray-300 text-sm mb-4 line-clamp-2" style={{ whiteSpace: 'pre-line' }}>{drill.description}</p>
                   )}
-
 
                   {topScore && (
                     <div className="bg-gradient-to-r from-yellow-900/30 to-orange-900/30 border border-yellow-700/50 rounded-lg p-3 mb-4">

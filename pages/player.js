@@ -1,4 +1,4 @@
-// pages/player.js - v0.52 SCHEMA MATCHED - removed START button from checkbox drills
+// pages/player.js - COMPLETE FILE with fundraiser integration
 import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/router';
 import { supabase } from '../lib/supabaseClient';
@@ -27,7 +27,12 @@ export default function PlayerDrill({ user, userProfile }) {
   const [stats, setStats] = useState(null);
   const [teamName, setTeamName] = useState('');
   const [teamColors, setTeamColors] = useState({ primary: '#3B82F6', secondary: '#1E40AF' });
-  const [autoSubmitted, setAutoSubmitted] = useState(false); // NEW: Track if auto-submitted
+  const [autoSubmitted, setAutoSubmitted] = useState(false);
+
+  // ===== FUNDRAISER STATE =====
+  const [activeFundraiser, setActiveFundraiser] = useState(null);
+  const [fundraiserProgress, setFundraiserProgress] = useState(null);
+  const [nextLevelBonus, setNextLevelBonus] = useState(null);
 
   const countdownInterval = useRef(null);
   const timerInterval = useRef(null);
@@ -36,7 +41,7 @@ export default function PlayerDrill({ user, userProfile }) {
   const startBeep = useRef(null);
   const endBuzzer = useRef(null);
   const wakeLock = useRef(null);
-  const hasAutoSubmitted = useRef(false); // NEW: Prevent multiple auto-submissions
+  const hasAutoSubmitted = useRef(false);
 
   useEffect(() => {
     countdownBeep.current = new Audio('/sounds/beep.wav');
@@ -56,9 +61,143 @@ export default function PlayerDrill({ user, userProfile }) {
     };
   }, [drillId, user]);
 
-  // Add this useEffect to handle wake lock
+  // ===== FETCH ACTIVE FUNDRAISER =====
   useEffect(() => {
-    // Request wake lock when drill starts
+    if (!user || !userProfile || !drill) return;
+    fetchActiveFundraiser();
+  }, [user, userProfile, drill]);
+
+  const fetchActiveFundraiser = async () => {
+    try {
+      const today = new Date().toISOString().split('T')[0];
+
+      // Find active fundraisers for this user
+      const { data: fundraisers, error } = await supabase
+        .from('fundraisers')
+        .select(`
+          id,
+          title,
+          start_date,
+          end_date,
+          fundraiser_type,
+          owner_id,
+          owner_type,
+          fundraiser_pledges (
+            pledge_type,
+            amount_per_level,
+            max_amount,
+            flat_amount
+          )
+        `)
+        .eq('status', 'active')
+        .lte('start_date', today)
+        .gte('end_date', today);
+
+      if (error) throw error;
+
+      // Filter to relevant fundraisers (player-specific or team)
+      const relevant = fundraisers?.filter(f => {
+        if (f.fundraiser_type === 'player' && f.owner_type === 'user') {
+          return f.owner_id === user.id;
+        }
+        // For team fundraisers, we'll check if user is part of it via progress table
+        return true;
+      });
+
+      if (!relevant || relevant.length === 0) {
+        setActiveFundraiser(null);
+        return;
+      }
+
+      // Get the first active fundraiser
+      const fundraiser = relevant[0];
+
+      // Fetch progress for this user
+      const { data: progressData, error: progressError } = await supabase
+        .from('fundraiser_progress')
+        .select('*')
+        .eq('fundraiser_id', fundraiser.id)
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+      if (progressError) throw progressError;
+
+      if (progressData) {
+        setActiveFundraiser(fundraiser);
+        setFundraiserProgress(progressData);
+        calculateNextLevelBonus(fundraiser, progressData);
+      }
+    } catch (err) {
+      console.error('Error fetching active fundraiser:', err);
+    }
+  };
+
+  const calculateNextLevelBonus = (fundraiser, progress) => {
+    // Calculate points to next level
+    const currentFundraiserPoints = progress.fundraiser_points_earned || 0;
+    const currentLevel = Math.floor(currentFundraiserPoints / 1000);
+    const nextLevelPoints = (currentLevel + 1) * 1000;
+    const pointsNeeded = nextLevelPoints - currentFundraiserPoints;
+
+    // Calculate how much money that represents for donors
+    let moneyPerLevel = 0;
+
+    if (fundraiser.fundraiser_pledges) {
+      fundraiser.fundraiser_pledges.forEach(pledge => {
+        if (pledge.pledge_type === 'per_level') {
+          const perLevel = parseFloat(pledge.amount_per_level) || 0;
+          const max = parseFloat(pledge.max_amount) || 0;
+          const levelsEarned = progress.fundraiser_levels_earned || 0;
+
+          // Only count if they haven't hit their max
+          if ((levelsEarned + 1) * perLevel <= max) {
+            moneyPerLevel += perLevel;
+          }
+        }
+      });
+    }
+
+    setNextLevelBonus({
+      pointsNeeded,
+      moneyValue: moneyPerLevel
+    });
+  };
+
+  // ===== UPDATE FUNDRAISER PROGRESS =====
+  const updateFundraiserProgressAfterDrill = async (pointsEarned) => {
+    if (!activeFundraiser || !user) return;
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+
+      const response = await fetch('/api/fundraisers/update-progress', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          user_id: user.id,
+          points_earned: pointsEarned
+        })
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        console.log('Fundraiser progress updated:', result);
+
+        // Refresh fundraiser data
+        fetchActiveFundraiser();
+      }
+    } catch (err) {
+      console.error('Error updating fundraiser progress:', err);
+      // Don't block drill completion on fundraiser update failure
+    }
+  };
+
+  // Add wake lock
+  useEffect(() => {
     const requestWakeLock = async () => {
       if ('wakeLock' in navigator && (running || countdown > 0)) {
         try {
@@ -74,7 +213,6 @@ export default function PlayerDrill({ user, userProfile }) {
       }
     };
 
-    // Release wake lock when drill stops
     const releaseWakeLock = async () => {
       if (wakeLock.current) {
         try {
@@ -92,13 +230,11 @@ export default function PlayerDrill({ user, userProfile }) {
       releaseWakeLock();
     }
 
-    // Cleanup on unmount
     return () => {
       releaseWakeLock();
     };
   }, [running, countdown]);
 
-  // Re-acquire wake lock when page becomes visible again
   useEffect(() => {
     const handleVisibilityChange = async () => {
       if (wakeLock.current !== null && document.visibilityState === 'visible' && running) {
@@ -117,10 +253,8 @@ export default function PlayerDrill({ user, userProfile }) {
     };
   }, [running]);
 
-  // NEW: Auto-submit timer drills when skip_rep_input is true
   useEffect(() => {
     if (completed && drill?.type === 'timer' && drill?.skip_rep_input && !hasAutoSubmitted.current) {
-      // Auto-submit after a brief delay to show completion animation
       const timer = setTimeout(() => {
         handleSubmitNoReps();
       }, 1500);
@@ -199,7 +333,6 @@ export default function PlayerDrill({ user, userProfile }) {
           });
         }
       }
-
 
       if (data.daily_limit) {
         const today = new Date().toISOString().split('T')[0];
@@ -283,15 +416,12 @@ export default function PlayerDrill({ user, userProfile }) {
     setCompleted(true);
   };
 
-  // NEW: Handle submission without reps (for skip_rep_input drills)
   const handleSubmitNoReps = async () => {
-    // Double guard: check both state and ref
     if (submitting || autoSubmitted || hasAutoSubmitted.current) {
       console.log('Submission already in progress, skipping...');
       return;
     }
 
-    // Check season status
     const seasonActive = await checkSeasonActive();
     if (!seasonActive) {
       setAutoSubmitted(false);
@@ -302,7 +432,6 @@ export default function PlayerDrill({ user, userProfile }) {
 
     console.log('Starting handleSubmitNoReps...');
 
-    // Set all guards immediately
     hasAutoSubmitted.current = true;
     setSubmitting(true);
     setAutoSubmitted(true);
@@ -313,7 +442,6 @@ export default function PlayerDrill({ user, userProfile }) {
 
       const pointsEarned = drill.points_for_completion || 0;
 
-      // Insert result with 0 reps
       const { error: resultError } = await supabase
         .from('drill_results')
         .insert({
@@ -321,7 +449,6 @@ export default function PlayerDrill({ user, userProfile }) {
           drill_id: drill.id,
           team_id: teamId,
           drill_name: drill.name,
-          team_id: teamId,
           reps: 0,
           points: pointsEarned,
           points_earned: pointsEarned,
@@ -333,7 +460,6 @@ export default function PlayerDrill({ user, userProfile }) {
         throw resultError;
       }
 
-      // Update user stats (sessions and reps tracking)
       const { error: statsError } = await supabase
         .from('user_stats')
         .upsert({
@@ -345,7 +471,6 @@ export default function PlayerDrill({ user, userProfile }) {
 
       if (statsError) throw statsError;
 
-      // Update total points in users table
       const newTotalPoints = (userProfile?.total_points || 0) + pointsEarned;
       const { error: userError } = await supabase
         .from('users')
@@ -354,20 +479,20 @@ export default function PlayerDrill({ user, userProfile }) {
 
       if (userError) throw userError;
 
-      // Check for level up
+      // ===== UPDATE FUNDRAISER PROGRESS =====
+      await updateFundraiserProgressAfterDrill(pointsEarned);
+
       const oldLevel = calculateLevel(userProfile?.total_points || 0);
       const newLevel = calculateLevel(newTotalPoints);
       if (newLevel > oldLevel) {
         setLeveledUp(newLevel);
       }
 
-      // Check for badge unlocks
       const badges = await checkBadgeUnlocks(user.id, stats?.total_reps || 0, newTotalPoints);
       if (badges.length > 0) {
         setUnlockedBadges(badges);
       }
 
-      // Mark as completed daily if applicable
       if (drill.daily_limit) {
         const today = new Date().toISOString().split('T')[0];
         await supabase
@@ -380,17 +505,15 @@ export default function PlayerDrill({ user, userProfile }) {
           });
       }
 
-      // If no modals to show, redirect
       if (!leveledUp && badges.length === 0) {
         setTimeout(() => router.push('/drills'), 1000);
       }
     } catch (err) {
       console.error('Error submitting drill:', err);
       console.error('Error details:', JSON.stringify(err, null, 2));
-      console.error('Drill data:', { drill_id: drill.id, user_id: user.id, team_id: userProfile?.active_team_id });
       alert(`Failed to submit drill. Error: ${err.message || 'Unknown error'}`);
       setAutoSubmitted(false);
-      hasAutoSubmitted.current = false; // Reset ref on error
+      hasAutoSubmitted.current = false;
     } finally {
       setSubmitting(false);
     }
@@ -398,15 +521,13 @@ export default function PlayerDrill({ user, userProfile }) {
 
   const handleSubmit = async () => {
     if (submitting) return;
-    
-    // Check season status
+
     const seasonActive = await checkSeasonActive();
     if (!seasonActive) {
       router.push('/drills');
       return;
     }
 
-    // Handle different drill types
     if (drill.type === 'reps') {
       const repsValue = parseInt(reps);
       if (!reps || repsValue <= 0) {
@@ -439,7 +560,6 @@ export default function PlayerDrill({ user, userProfile }) {
         pointsEarned = drill.points_for_completion;
       }
 
-      // Check for 67 easter egg
       if (drill.type === 'reps' && repsValue === 67) {
         setShow67Animation(true);
         setTimeout(() => setShow67Animation(false), 2000);
@@ -449,7 +569,6 @@ export default function PlayerDrill({ user, userProfile }) {
         }
       }
 
-      // Insert result
       const { error: resultError } = await supabase
         .from('drill_results')
         .insert({
@@ -465,7 +584,6 @@ export default function PlayerDrill({ user, userProfile }) {
 
       if (resultError) throw resultError;
 
-      // Update user stats (sessions and reps tracking)
       const newTotalReps = (stats?.total_reps || 0) + repsValue;
       const { error: statsError } = await supabase
         .from('user_stats')
@@ -478,7 +596,6 @@ export default function PlayerDrill({ user, userProfile }) {
 
       if (statsError) throw statsError;
 
-      // Update total points in users table
       const newTotalPoints = (userProfile?.total_points || 0) + pointsEarned;
       const { error: userError } = await supabase
         .from('users')
@@ -487,20 +604,20 @@ export default function PlayerDrill({ user, userProfile }) {
 
       if (userError) throw userError;
 
-      // Check for level up
+      // ===== UPDATE FUNDRAISER PROGRESS =====
+      await updateFundraiserProgressAfterDrill(pointsEarned);
+
       const oldLevel = calculateLevel(userProfile?.total_points || 0);
       const newLevel = calculateLevel(newTotalPoints);
       if (newLevel > oldLevel) {
         setLeveledUp(newLevel);
       }
 
-      // Check for badge unlocks
       const badges = await checkBadgeUnlocks(user.id, newTotalReps, newTotalPoints);
       if (badges.length > 0) {
         setUnlockedBadges(badges);
       }
 
-      // Mark as completed daily if applicable
       if (drill.daily_limit) {
         const today = new Date().toISOString().split('T')[0];
         await supabase
@@ -513,7 +630,6 @@ export default function PlayerDrill({ user, userProfile }) {
           });
       }
 
-      // If no modals to show, redirect
       if (!leveledUp && badges.length === 0) {
         router.push('/drills');
       }
@@ -534,7 +650,6 @@ export default function PlayerDrill({ user, userProfile }) {
     if (submitting) return;
     setSubmitting(true);
 
-    // Check season status
     const seasonActive = await checkSeasonActive();
     if (!seasonActive) {
       setSubmitting(false);
@@ -548,7 +663,6 @@ export default function PlayerDrill({ user, userProfile }) {
 
       const pointsEarned = drill.points_for_completion;
 
-      // Insert result
       const { error: resultError } = await supabase
         .from('drill_results')
         .insert({
@@ -563,7 +677,6 @@ export default function PlayerDrill({ user, userProfile }) {
 
       if (resultError) throw resultError;
 
-      // Update user stats (sessions and reps tracking)
       const { error: statsError } = await supabase
         .from('user_stats')
         .upsert({
@@ -575,7 +688,6 @@ export default function PlayerDrill({ user, userProfile }) {
 
       if (statsError) throw statsError;
 
-      // Update total points in users table
       const newTotalPoints = (userProfile?.total_points || 0) + pointsEarned;
       const { error: userError } = await supabase
         .from('users')
@@ -584,20 +696,20 @@ export default function PlayerDrill({ user, userProfile }) {
 
       if (userError) throw userError;
 
-      // Check for level up
+      // ===== UPDATE FUNDRAISER PROGRESS =====
+      await updateFundraiserProgressAfterDrill(pointsEarned);
+
       const oldLevel = calculateLevel(userProfile?.total_points || 0);
       const newLevel = calculateLevel(newTotalPoints);
       if (newLevel > oldLevel) {
         setLeveledUp(newLevel);
       }
 
-      // Check for badge unlocks
       const badges = await checkBadgeUnlocks(user.id, stats?.total_reps || 0, newTotalPoints);
       if (badges.length > 0) {
         setUnlockedBadges(badges);
       }
 
-      // Mark as completed daily if applicable
       if (drill.daily_limit) {
         const today = new Date().toISOString().split('T')[0];
         await supabase
@@ -610,7 +722,6 @@ export default function PlayerDrill({ user, userProfile }) {
           });
       }
 
-      // If no modals to show, redirect
       if (!leveledUp && badges.length === 0) {
         router.push('/drills');
       } else {
@@ -624,7 +735,6 @@ export default function PlayerDrill({ user, userProfile }) {
     }
   };
 
-  // Calculate points for display
   const calculatedPoints = drill?.type === 'timer' || drill?.type === 'reps'
     ? (parseInt(reps) || 0) * drill.points_per_rep + drill.points_for_completion
     : drill?.points_for_completion || 0;
@@ -664,6 +774,33 @@ export default function PlayerDrill({ user, userProfile }) {
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-gray-900 p-4">
       <div className="max-w-4xl mx-auto">
+
+        {/* ===== FUNDRAISER BANNER ===== */}
+        {activeFundraiser && nextLevelBonus && nextLevelBonus.moneyValue > 0 && (
+          <div className="bg-gradient-to-r from-green-900/50 to-emerald-900/50 border-2 border-green-500 rounded-xl p-4 mb-6 animate-pulse">
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex-1">
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="text-2xl">💰</span>
+                  <h3 className="text-lg font-bold text-green-300">
+                    {activeFundraiser.title}
+                  </h3>
+                </div>
+                <p className="text-white text-sm sm:text-base">
+                  <span className="font-bold text-green-400">{nextLevelBonus.pointsNeeded}</span> points to next level =
+                  <span className="font-bold text-green-400 ml-2">${nextLevelBonus.moneyValue.toFixed(2)}</span> more for your supporters!
+                </p>
+              </div>
+              <button
+                onClick={() => router.push(`/fundraiser/${activeFundraiser.id}`)}
+                className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-semibold transition text-sm whitespace-nowrap"
+              >
+                View Progress
+              </button>
+            </div>
+          </div>
+        )}
+
         <div className="bg-gray-800 rounded-xl p-6 sm:p-8 border border-gray-700 min-h-[600px] flex flex-col">
           <div className="mb-6">
             <h1 className="text-2xl sm:text-3xl font-bold text-white mb-2">{drill.name}</h1>
@@ -813,7 +950,6 @@ export default function PlayerDrill({ user, userProfile }) {
             </div>
           )}
 
-          {/* Timer completed WITH rep input (default behavior) */}
           {completed && drill.type === 'timer' && !drill.skip_rep_input && !autoSubmitted && (
             <div className="flex-1 flex flex-col items-center justify-center">
               <div className="text-6xl mb-4">🎉</div>
@@ -850,7 +986,6 @@ export default function PlayerDrill({ user, userProfile }) {
             </div>
           )}
 
-          {/* Timer completed WITHOUT rep input (skip_rep_input = true) */}
           {completed && drill.type === 'timer' && drill.skip_rep_input && (
             <div className="flex-1 flex flex-col items-center justify-center">
               <div className="text-6xl mb-4">🎉</div>
@@ -904,7 +1039,6 @@ export default function PlayerDrill({ user, userProfile }) {
         </div>
       </div>
 
-      {/* 67 Easter Egg Animation */}
       {show67Animation && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 animate-fade-in">
           <div className="text-center animate-bounce">
@@ -915,7 +1049,6 @@ export default function PlayerDrill({ user, userProfile }) {
         </div>
       )}
 
-      {/* Level Up Modal */}
       {leveledUp && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80">
           <div className="bg-gradient-to-br from-yellow-500 to-orange-500 rounded-xl p-8 max-w-md border-4 border-yellow-300 text-center">
@@ -958,7 +1091,6 @@ export default function PlayerDrill({ user, userProfile }) {
         </div>
       )}
 
-      {/* Badge Unlock Modal */}
       {unlockedBadges.length > 0 && !showShareModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80">
           <div className="bg-gray-800 rounded-xl p-8 max-w-md border-4 border-yellow-500">
@@ -1006,7 +1138,6 @@ export default function PlayerDrill({ user, userProfile }) {
         </div>
       )}
 
-      {/* Share Modal */}
       <ShareModal
         isOpen={showShareModal}
         onClose={() => {
