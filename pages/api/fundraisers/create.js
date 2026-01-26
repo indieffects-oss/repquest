@@ -21,15 +21,15 @@ export default async function handler(req, res) {
             return res.status(401).json({ error: 'Unauthorized' });
         }
 
-        // Verify user is a coach
+        // Get user profile
         const { data: userProfile } = await supabaseAdmin
             .from('users')
             .select('role, active_team_id')
             .eq('id', user.id)
             .single();
 
-        if (!userProfile || userProfile.role !== 'coach') {
-            return res.status(403).json({ error: 'Only coaches can create fundraisers' });
+        if (!userProfile) {
+            return res.status(403).json({ error: 'User profile not found' });
         }
 
         const {
@@ -54,6 +54,15 @@ export default async function handler(req, res) {
             return res.status(400).json({ error: 'Invalid fundraiser type' });
         }
 
+        // Role-based validation
+        if (fundraiser_type === 'team' && userProfile.role !== 'coach') {
+            return res.status(403).json({ error: 'Only coaches can create team fundraisers' });
+        }
+
+        if (fundraiser_type === 'player' && userProfile.role !== 'player') {
+            return res.status(403).json({ error: 'Only players can create player fundraisers' });
+        }
+
         const startDate = new Date(start_date);
         const endDate = new Date(end_date);
 
@@ -68,24 +77,19 @@ export default async function handler(req, res) {
         if (fundraiser_type === 'player') {
             owner_type = 'user';
 
-            // Verify player exists and is on coach's team
-            const { data: player, error: playerError } = await supabaseAdmin
-                .from('users')
-                .select('id, active_team_id')
-                .eq('id', owner_id)
-                .single();
-
-            if (playerError || !player) {
-                return res.status(404).json({ error: 'Player not found' });
+            // Verify player is creating for themselves
+            if (owner_id !== user.id) {
+                return res.status(403).json({ error: 'You can only create fundraisers for yourself' });
             }
 
-            // Verify player is on coach's active team
-            if (player.active_team_id !== userProfile.active_team_id) {
-                return res.status(403).json({ error: 'Player is not on your active team' });
+            // Verify player has an active team
+            if (!userProfile.active_team_id) {
+                return res.status(400).json({ error: 'You must be on a team to create a fundraiser' });
             }
 
-            team_id = player.active_team_id;
+            team_id = userProfile.active_team_id;
         } else {
+            // Team fundraiser
             owner_type = 'team';
 
             // Verify team exists and coach owns it
@@ -129,7 +133,7 @@ export default async function handler(req, res) {
 
         if (createError) throw createError;
 
-        // If player fundraiser, initialize progress tracking
+        // Initialize progress tracking
         if (fundraiser_type === 'player') {
             // Get player's current points FOR THIS TEAM ONLY
             const { data: playerResults } = await supabaseAdmin
