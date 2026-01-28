@@ -98,7 +98,8 @@ export default async function handler(req, res) {
                     fundraiser_progress (
                         user_id,
                         fundraiser_levels_earned,
-                        fundraiser_points_earned
+                        fundraiser_points_earned,
+                        user:users!user_id (display_name)
                     ),
                     fundraiser_pledges (
                         id,
@@ -108,10 +109,13 @@ export default async function handler(req, res) {
                         amount_per_level,
                         max_amount,
                         flat_amount,
-                        player_id
+                        player_id,
+                        payment_status,
+                        player:users!player_id (display_name)
                     ),
                     team:teams!team_id (name),
-                    creator:users!created_by (display_name, email)
+                    creator:users!created_by (display_name, email),
+                    owner:users!owner_id (display_name, email)
                 `)
                 .eq('status', 'active')
                 .lt('end_date', today);
@@ -213,6 +217,37 @@ export default async function handler(req, res) {
                         }
                     }
 
+                    // Send summary email to coach/player owner with CSV data
+                    const ownerEmail = fundraiser.fundraiser_type === 'player'
+                        ? fundraiser.owner?.email
+                        : fundraiser.creator?.email;
+
+                    const ownerName = fundraiser.fundraiser_type === 'player'
+                        ? fundraiser.owner?.display_name
+                        : fundraiser.creator?.display_name;
+
+                    if (ownerEmail) {
+                        // Generate CSV data
+                        const csvData = generateCSV(fundraiser, totalLevels);
+
+                        try {
+                            await fetch(`${baseUrl}/api/fundraisers/send-owner-summary`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    fundraiser,
+                                    ownerEmail,
+                                    ownerName,
+                                    totalLevels,
+                                    csvData
+                                })
+                            });
+                            emailsSent++; // Count owner email
+                        } catch (emailErr) {
+                            console.error(`Failed to send owner summary to ${ownerEmail}:`, emailErr);
+                        }
+                    }
+
                     processedFundraisers.push({
                         id: fundraiser.id,
                         title: fundraiser.title,
@@ -246,4 +281,53 @@ export default async function handler(req, res) {
             results
         });
     }
+}
+
+// Generate CSV for owner summary email
+function generateCSV(fundraiser, totalLevels) {
+    let csv = '';
+
+    // Header
+    csv += 'Donor Name,Donor Email,Pledge Type,Amount Per Level,Max Amount,Flat Amount,';
+    if (fundraiser.fundraiser_type === 'team') {
+        csv += 'Player Supported,Player Levels,';
+    }
+    csv += 'Final Amount Owed,Payment Status\n';
+
+    // Pledges
+    for (const pledge of fundraiser.fundraiser_pledges || []) {
+        csv += `"${pledge.donor_name}",`;
+        csv += `"${pledge.donor_email}",`;
+        csv += `${pledge.pledge_type},`;
+        csv += `${pledge.amount_per_level || ''},`;
+        csv += `${pledge.max_amount || ''},`;
+        csv += `${pledge.flat_amount || ''},`;
+
+        if (fundraiser.fundraiser_type === 'team') {
+            csv += `"${pledge.player?.display_name || 'Team General'}",`;
+            const playerProgress = fundraiser.fundraiser_progress?.find(p => p.user_id === pledge.player_id);
+            csv += `${playerProgress?.fundraiser_levels_earned || totalLevels},`;
+        }
+
+        // Calculate final amount for CSV
+        let finalAmount = 0;
+        if (pledge.pledge_type === 'flat') {
+            finalAmount = parseFloat(pledge.flat_amount) || 0;
+        } else {
+            let levels = totalLevels;
+            if (pledge.player_id) {
+                const progress = fundraiser.fundraiser_progress?.find(
+                    pr => pr.user_id === pledge.player_id
+                );
+                levels = progress?.fundraiser_levels_earned || 0;
+            }
+            const uncapped = levels * (parseFloat(pledge.amount_per_level) || 0);
+            finalAmount = Math.min(uncapped, parseFloat(pledge.max_amount) || 0);
+        }
+
+        csv += `${finalAmount.toFixed(2)},`;
+        csv += `${pledge.payment_status || 'pending'}\n`;
+    }
+
+    return csv;
 }

@@ -126,7 +126,8 @@ export default async function handler(req, res) {
                 estimated_max_levels: estimated_max_levels || 0,
                 prize_tiers: prize_tiers || [],
                 created_by: user.id,
-                team_id
+                team_id,
+                status: 'active'
             })
             .select()
             .single();
