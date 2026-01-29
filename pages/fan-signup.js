@@ -216,7 +216,7 @@ export default function FanSignup() {
                         Are you a player or coach?{' '}
                         <button
                             type="button"
-                            onClick={() => router.push('/')
+                            onClick={() => router.push('/')}
                             className="text-blue-400 hover:text-blue-300 font-semibold"
                         >
                             Sign up here
