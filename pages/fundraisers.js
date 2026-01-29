@@ -284,9 +284,6 @@ export default function Fundraisers({ user, userProfile }) {
                                     <p className="text-green-300 text-sm font-semibold">
                                         💯 100% of funds go directly to your team—no percentage taken by RepQuest!
                                     </p>
-                                    <p className="text-blue-200 text-xs mt-2 italic">
-                                        (If successful, we may add payment processing in the future with a small convenience fee)
-                                    </p>
                                 </div>
                             </div>
                         </div>
