@@ -64,20 +64,24 @@ export default function FanSignup() {
                 throw new Error('Failed to create account');
             }
 
-            // Create user profile with fan role
-            const { error: profileError } = await supabase
-                .from('users')
-                .insert({
-                    id: authData.user.id,
+            // Create user profile via API (uses admin privileges to bypass RLS)
+            const profileResponse = await fetch('/api/users/create-fan-profile', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    user_id: authData.user.id,
                     email: form.email.toLowerCase().trim(),
-                    display_name: form.display_name.trim(),
-                    role: 'fan',
-                    total_points: 0
-                });
+                    display_name: form.display_name.trim()
+                })
+            });
 
-            if (profileError) {
-                console.error('Profile creation error:', profileError);
-                // Don't throw - auth account was created successfully
+            const profileData = await profileResponse.json();
+
+            if (!profileResponse.ok) {
+                console.error('Profile creation error:', profileData);
+                throw new Error('Failed to create profile. Please contact support.');
             }
 
             alert('✅ Account created successfully! You can now support fundraisers.');
@@ -212,7 +216,7 @@ export default function FanSignup() {
                         Are you a player or coach?{' '}
                         <button
                             type="button"
-                            onClick={() => router.push('/')}
+                            onClick={() => router.push('/')
                             className="text-blue-400 hover:text-blue-300 font-semibold"
                         >
                             Sign up here
