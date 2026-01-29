@@ -11,8 +11,19 @@ export default function FundraiserBanner({ fundraiser, pledges }) {
         if (!fundraiser || !fundraiser.fundraiser) return;
 
         const updateTimeLeft = () => {
+            // Use same date comparison as rest of app (UTC date strings)
+            const today = new Date().toISOString().split('T')[0];
+            const endDate = fundraiser.fundraiser.end_date;
+
+            // Check if fundraiser has ended (comparing date strings)
+            if (today > endDate) {
+                setTimeLeft('Ended');
+                return;
+            }
+
+            // Calculate time remaining until end of end_date
             const now = new Date();
-            const end = new Date(fundraiser.fundraiser.end_date);
+            const end = new Date(endDate + 'T23:59:59Z'); // End of day in UTC
             const diff = end - now;
 
             if (diff <= 0) {
