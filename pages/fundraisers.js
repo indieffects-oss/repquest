@@ -46,6 +46,7 @@ export default function Fundraisers({ user, userProfile }) {
                 .from('fundraisers')
                 .select(`
           *,
+          team:teams!team_id (name, logo_url),
           fundraiser_progress (
             user_id,
             fundraiser_points_earned,
@@ -480,6 +481,11 @@ export default function Fundraisers({ user, userProfile }) {
                                             <h3 className="text-xl font-bold text-white">{fundraiser.title}</h3>
                                             {getStatusBadge(fundraiser)}
                                         </div>
+                                        {fundraiser.team?.name && (
+                                            <p className="text-gray-500 text-xs mb-1">
+                                                🏆 {fundraiser.team.name}
+                                            </p>
+                                        )}
                                         <p className="text-gray-400 text-sm">
                                             {new Date(fundraiser.start_date).toLocaleDateString()} - {new Date(fundraiser.end_date).toLocaleDateString()}
                                         </p>

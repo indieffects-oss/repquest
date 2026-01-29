@@ -296,6 +296,7 @@ export default function DrillsList({ user, userProfile }) {
       const activeFundraisers = progressData.filter(prog => {
         const f = prog.fundraiser;
         return f &&
+          f.status === 'active' &&
           f.team_id === userProfile.active_team_id &&
           f.start_date <= today &&
           f.end_date >= today;
