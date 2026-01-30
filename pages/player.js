@@ -85,6 +85,7 @@ export default function PlayerDrill({ user, userProfile }) {
           fundraiser_type,
           owner_id,
           owner_type,
+          team_id,
           fundraiser_pledges (
             pledge_type,
             amount_per_level,
@@ -105,8 +106,11 @@ export default function PlayerDrill({ user, userProfile }) {
         if (f.fundraiser_type === 'player' && f.owner_type === 'user') {
           return f.owner_id === user.id;
         }
-        // For team fundraisers, we'll check if user is part of it via progress table
-        return true;
+        // For team fundraisers, only show if it's for the user's active team
+        if (f.fundraiser_type === 'team') {
+          return f.team_id === userProfile?.active_team_id;
+        }
+        return false;
       });
 
       console.log('Relevant fundraisers after filter:', relevant);
