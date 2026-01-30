@@ -488,7 +488,7 @@ export default function PlayerDrill({ user, userProfile }) {
         setLeveledUp(newLevel);
       }
 
-      const badges = await checkBadgeUnlocks(user.id, stats?.total_reps || 0, newTotalPoints);
+      const badges = await checkBadgeUnlocks(supabase, user.id, stats, null);
       if (badges.length > 0) {
         setUnlockedBadges(badges);
       }
@@ -613,7 +613,7 @@ export default function PlayerDrill({ user, userProfile }) {
         setLeveledUp(newLevel);
       }
 
-      const badges = await checkBadgeUnlocks(user.id, newTotalReps, newTotalPoints);
+      const badges = await checkBadgeUnlocks(supabase, user.id, stats, null);
       if (badges.length > 0) {
         setUnlockedBadges(badges);
       }
@@ -705,7 +705,7 @@ export default function PlayerDrill({ user, userProfile }) {
         setLeveledUp(newLevel);
       }
 
-      const badges = await checkBadgeUnlocks(user.id, stats?.total_reps || 0, newTotalPoints);
+      const badges = await checkBadgeUnlocks(supabase, user.id, stats, null);
       if (badges.length > 0) {
         setUnlockedBadges(badges);
       }
