@@ -105,8 +105,21 @@ function MyApp({ Component, pageProps }) {
         .eq('id', userId)
         .single();
 
-      if (error) throw error;
+      if (error) {
+        console.error('Profile fetch error:', error);
+        console.error('Error code:', error.code);
+        console.error('Error message:', error.message);
+        console.error('Error details:', error.details);
+        throw error;
+      }
 
+      if (!data) {
+        console.error('No profile data returned for user:', userId);
+        setLoading(false);
+        return;
+      }
+
+      console.log('Profile fetched successfully:', data.role, data.email);
       setUserProfile(data);
 
       // Fetch team colors based on role and active team
