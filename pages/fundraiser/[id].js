@@ -461,9 +461,10 @@ export default function FundraiserPage({ user, userProfile }) {
                     <div className="text-center mb-6">
                         <button
                             onClick={handleMakePledgeClick}
-                            className="bg-green-600 hover:bg-green-700 text-white px-8 py-4 rounded-lg font-bold text-lg transition"
+                            disabled={loading || !userProfile}
+                            className="bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white px-8 py-4 rounded-lg font-bold text-lg transition"
                         >
-                            💰 Make a Pledge
+                            {loading || !userProfile ? '⏳ Loading...' : '💰 Make a Pledge'}
                         </button>
                     </div>
                 )}
