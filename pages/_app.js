@@ -32,10 +32,14 @@ function MyApp({ Component, pageProps }) {
         if (!mounted) return;
 
         if (session?.user) {
+          console.log('✅ Session found, user:', session.user.email);
           setUser(session.user);
+          console.log('📞 About to call fetchUserProfile for:', session.user.id);
           await fetchUserProfile(session.user.id);
+          console.log('✅ fetchUserProfile completed');
           hasUserProfile.current = true;
         } else {
+          console.log('❌ No session found');
           setLoading(false);
         }
       } catch (err) {
