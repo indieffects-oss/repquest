@@ -66,11 +66,13 @@ function MyApp({ Component, pageProps }) {
           router.push('/');
         }
       } else if (event === 'SIGNED_IN' && session?.user) {
+        // Always set user, even if already fetching
+        setUser(session.user);
+
         // Only process SIGNED_IN if we don't have a profile yet
         // If we have a profile, this is from tab switch
         if (hasUserProfile.current) {
           console.log('Already have profile, ignoring SIGNED_IN from tab switch');
-          setUser(session.user);
           return;
         }
 
@@ -82,7 +84,6 @@ function MyApp({ Component, pageProps }) {
 
         console.log('Processing SIGNED_IN - real login');
         isFetching.current = true;
-        setUser(session.user);
         setLoading(true);
         await fetchUserProfile(session.user.id);
         hasUserProfile.current = true;
