@@ -100,6 +100,8 @@ function MyApp({ Component, pageProps }) {
 
   const fetchUserProfile = async (userId, skipRedirect = false) => {
     try {
+      console.log('🔍 Fetching profile for user:', userId);
+
       const { data, error } = await supabase
         .from('users')
         .select('*')
@@ -107,20 +109,22 @@ function MyApp({ Component, pageProps }) {
         .single();
 
       if (error) {
-        console.error('Profile fetch error:', error);
+        console.error('❌ Profile fetch error:', error);
         console.error('Error code:', error.code);
         console.error('Error message:', error.message);
         console.error('Error details:', error.details);
-        throw error;
-      }
-
-      if (!data) {
-        console.error('No profile data returned for user:', userId);
+        // DON'T throw - just set loading to false and return
         setLoading(false);
         return;
       }
 
-      console.log('Profile fetched successfully:', data.role, data.email);
+      if (!data) {
+        console.error('❌ No profile data returned for user:', userId);
+        setLoading(false);
+        return;
+      }
+
+      console.log('✅ Profile fetched successfully:', data.role, data.email);
       setUserProfile(data);
 
       // Fetch team colors based on role and active team
