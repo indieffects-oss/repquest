@@ -90,9 +90,8 @@ export default function FundraiserPage({ user, userProfile }) {
     };
 
     const handleMakePledgeClick = () => {
-        // Check login IMMEDIATELY when button clicked
-        // Must check BOTH user and userProfile due to async loading
-        if (!user || !userProfile) {
+        // Simple check - just verify user exists
+        if (!user) {
             const shouldCreateAccount = window.confirm(
                 'You need to be signed in to make a pledge.\n\n' +
                 'Click OK to create a supporter account, or Cancel to sign in with an existing account.'
@@ -106,7 +105,7 @@ export default function FundraiserPage({ user, userProfile }) {
             return;
         }
 
-        // User is logged in and profile is loaded, show form
+        // User exists, show form
         setShowPledgeForm(true);
     };
 
@@ -461,10 +460,9 @@ export default function FundraiserPage({ user, userProfile }) {
                     <div className="text-center mb-6">
                         <button
                             onClick={handleMakePledgeClick}
-                            disabled={!user || !userProfile}
-                            className="bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white px-8 py-4 rounded-lg font-bold text-lg transition"
+                            className="bg-green-600 hover:bg-green-700 text-white px-8 py-4 rounded-lg font-bold text-lg transition"
                         >
-                            {!user || !userProfile ? '⏳ Loading...' : '💰 Make a Pledge'}
+                            💰 Make a Pledge
                         </button>
                     </div>
                 )}
