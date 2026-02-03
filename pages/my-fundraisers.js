@@ -50,6 +50,7 @@ export default function MyFundraisers({ user, userProfile }) {
             estimated_min_levels,
             estimated_max_levels,
             fundraiser_type,
+            created_at,
             team:teams!team_id (name, logo_url)
           )
         `)
