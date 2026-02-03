@@ -82,6 +82,7 @@ export default function MyFundraisers({ user, userProfile }) {
     };
 
     // Sort fundraisers: active first, upcoming second, ended last
+    // Within each group, sort by created_at descending (newest first)
     const sortedFundraisers = fundraisers.sort((a, b) => {
         const today = new Date().toISOString().split('T')[0];
 
@@ -91,7 +92,16 @@ export default function MyFundraisers({ user, userProfile }) {
             today > b.fundraiser.end_date ? 'ended' : 'active';
 
         const statusOrder = { active: 0, upcoming: 1, ended: 2 };
-        return statusOrder[aStatus] - statusOrder[bStatus];
+
+        // First sort by status
+        if (statusOrder[aStatus] !== statusOrder[bStatus]) {
+            return statusOrder[aStatus] - statusOrder[bStatus];
+        }
+
+        // Within same status, sort by created_at (newest first)
+        const aDate = new Date(a.fundraiser.created_at);
+        const bDate = new Date(b.fundraiser.created_at);
+        return bDate - aDate; // Descending order (newest first)
     });
 
     const calculateTotalRaised = (fundraiser) => {
