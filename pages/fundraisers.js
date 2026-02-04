@@ -275,19 +275,15 @@ export default function Fundraisers({ user, userProfile }) {
                                 <div className="flex-1">
                                     <h3 className="text-blue-300 font-semibold mb-2">How RepQuest Fundraising Works</h3>
                                     <p className="text-blue-200 text-sm mb-2">
-                                        RepQuest handles pledge tracking and notifications throughout your fundraiser.
+                                        Donors can pledge per level a player earns during the fundraiser or a flat amount. RepQuest tracks pledges and notifies supporters.
                                         <strong> We do not process payments.</strong>
                                     </p>
                                     <p className="text-blue-200 text-sm mb-2">
                                         When your fundraiser ends, you'll receive a detailed report of all pledges via email and can export a spreadsheet to manage collections yourself.
                                     </p>
                                     <p className="text-green-300 text-sm font-semibold">
-                                        💯 100% of funds go directly to your team—no percentage taken by RepQuest!
-                                    </p>
-                                    <p className="text-blue-200 text-xs mt-2 italic">
-                                        (If successful, we may add payment processing in the future with a small convenience fee)
-                                    </p>
-                                </div>
+                                        💯 100% of funds go directly to your team—no percentage is taken by RepQuest!
+                                    </p>                                </div>
                             </div>
                         </div>
 
