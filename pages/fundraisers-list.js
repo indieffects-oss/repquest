@@ -104,8 +104,8 @@ export default function FundraisersList({ user, userProfile }) {
                     <button
                         onClick={() => setFilter('active')}
                         className={`px-4 py-2 rounded-lg font-semibold transition whitespace-nowrap ${filter === 'active'
-                                ? 'bg-green-600 text-white'
-                                : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                            ? 'bg-green-600 text-white'
+                            : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
                             }`}
                     >
                         ✅ Active
@@ -113,8 +113,8 @@ export default function FundraisersList({ user, userProfile }) {
                     <button
                         onClick={() => setFilter('upcoming')}
                         className={`px-4 py-2 rounded-lg font-semibold transition whitespace-nowrap ${filter === 'upcoming'
-                                ? 'bg-yellow-600 text-white'
-                                : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                            ? 'bg-yellow-600 text-white'
+                            : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
                             }`}
                     >
                         🗓️ Upcoming
@@ -122,8 +122,8 @@ export default function FundraisersList({ user, userProfile }) {
                     <button
                         onClick={() => setFilter('ended')}
                         className={`px-4 py-2 rounded-lg font-semibold transition whitespace-nowrap ${filter === 'ended'
-                                ? 'bg-gray-600 text-white'
-                                : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                            ? 'bg-gray-600 text-white'
+                            : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
                             }`}
                     >
                         🏁 Ended
@@ -131,8 +131,8 @@ export default function FundraisersList({ user, userProfile }) {
                     <button
                         onClick={() => setFilter('all')}
                         className={`px-4 py-2 rounded-lg font-semibold transition whitespace-nowrap ${filter === 'all'
-                                ? 'bg-blue-600 text-white'
-                                : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                            ? 'bg-blue-600 text-white'
+                            : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
                             }`}
                     >
                         📋 All
@@ -248,14 +248,14 @@ export default function FundraisersList({ user, userProfile }) {
 
                                     {/* Dates */}
                                     <div className="text-xs text-gray-500 mb-3">
-                                        {new Date(fundraiser.start_date).toLocaleDateString()} - {new Date(fundraiser.end_date).toLocaleDateString()}
+                                        {new Date(fundraiser.start_date + 'T12:00:00').toLocaleDateString()} - {new Date(fundraiser.end_date + 'T12:00:00').toLocaleDateString()}
                                     </div>
 
                                     {/* CTA Button */}
                                     <button
                                         className={`w-full py-2 rounded-lg font-semibold transition ${isActive
-                                                ? 'bg-green-600 hover:bg-green-700 text-white'
-                                                : 'bg-gray-700 hover:bg-gray-600 text-gray-300'
+                                            ? 'bg-green-600 hover:bg-green-700 text-white'
+                                            : 'bg-gray-700 hover:bg-gray-600 text-gray-300'
                                             }`}
                                     >
                                         {isActive ? 'View & Pledge' : 'View Details'}

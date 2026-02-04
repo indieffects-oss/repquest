@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import { supabase } from '../lib/supabaseClient';
 import QRCodeModal from '../components/QRCodeModal';
+import InfoTooltip from '../components/InfoTooltip';
 
 export default function Fundraisers({ user, userProfile }) {
     const router = useRouter();
@@ -46,7 +47,6 @@ export default function Fundraisers({ user, userProfile }) {
                 .from('fundraisers')
                 .select(`
           *,
-          team:teams!team_id (name, logo_url),
           fundraiser_progress (
             user_id,
             fundraiser_points_earned,
@@ -284,6 +284,9 @@ export default function Fundraisers({ user, userProfile }) {
                                     <p className="text-green-300 text-sm font-semibold">
                                         💯 100% of funds go directly to your team—no percentage taken by RepQuest!
                                     </p>
+                                    <p className="text-blue-200 text-xs mt-2 italic">
+                                        (If successful, we may add payment processing in the future with a small convenience fee)
+                                    </p>
                                 </div>
                             </div>
                         </div>
@@ -368,7 +371,10 @@ export default function Fundraisers({ user, userProfile }) {
                             {/* Estimated Levels */}
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
-                                    <label className="block text-gray-300 text-sm mb-2">Estimated Min Levels</label>
+                                    <label className="block text-gray-300 text-sm mb-2 flex items-center">
+                                        Estimated Min Levels
+                                        <InfoTooltip text="The minimum number of levels (1000 pts each) you expect players to earn during this fundraiser. This helps supporters estimate their pledge amount." />
+                                    </label>
                                     <input
                                         type="number"
                                         value={form.estimated_min_levels}
@@ -378,7 +384,10 @@ export default function Fundraisers({ user, userProfile }) {
                                     />
                                 </div>
                                 <div>
-                                    <label className="block text-gray-300 text-sm mb-2">Estimated Max Levels</label>
+                                    <label className="block text-gray-300 text-sm mb-2 flex items-center">
+                                        Estimated Max Levels
+                                        <InfoTooltip text="The maximum number of levels you expect players to reach. Supporters can set a pledge cap based on this estimate to control their total contribution." />
+                                    </label>
                                     <input
                                         type="number"
                                         value={form.estimated_max_levels}
@@ -478,13 +487,8 @@ export default function Fundraisers({ user, userProfile }) {
                                             <h3 className="text-xl font-bold text-white">{fundraiser.title}</h3>
                                             {getStatusBadge(fundraiser)}
                                         </div>
-                                        {fundraiser.team?.name && (
-                                            <p className="text-gray-500 text-xs mb-1">
-                                                🏆 {fundraiser.team.name}
-                                            </p>
-                                        )}
                                         <p className="text-gray-400 text-sm">
-                                            {new Date(fundraiser.start_date).toLocaleDateString()} - {new Date(fundraiser.end_date).toLocaleDateString()}
+                                            {new Date(fundraiser.start_date + 'T12:00:00').toLocaleDateString()} - {new Date(fundraiser.end_date + 'T12:00:00').toLocaleDateString()}
                                         </p>
                                     </div>
                                 </div>

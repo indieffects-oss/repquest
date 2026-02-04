@@ -146,6 +146,8 @@ function MyApp({ Component, pageProps }) {
           router.push('/profile');
         } else if (data.role === 'coach') {
           router.push('/dashboard');
+        } else if (data.role === 'fan') {
+          router.push('/my-pledges');
         } else {
           router.push('/drills');
         }

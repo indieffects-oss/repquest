@@ -305,7 +305,7 @@ export default function FundraiserPage({ user, userProfile }) {
                                 {getStatusBadge()}
                             </div>
                             <p className="text-gray-400 text-sm">
-                                {fundraiser.team?.name} • {new Date(fundraiser.start_date).toLocaleDateString()} - {new Date(fundraiser.end_date).toLocaleDateString()}
+                                {fundraiser.team?.name} • {new Date(fundraiser.start_date + 'T12:00:00').toLocaleDateString()} - {new Date(fundraiser.end_date + 'T12:00:00').toLocaleDateString()}
                             </p>
                             <p className="text-gray-500 text-xs mt-1">
                                 {fundraiser.fundraiser_type === 'player' ? 'Player Fundraiser' : 'Team Fundraiser'}
