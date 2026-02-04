@@ -102,6 +102,13 @@ export default function MyFundraisers({ user, userProfile }) {
         // Within same status, sort by created_at (newest first)
         const aDate = new Date(a.fundraiser.created_at);
         const bDate = new Date(b.fundraiser.created_at);
+
+        console.log('Comparing:', {
+            a: { title: a.fundraiser.title, created_at: a.fundraiser.created_at, date: aDate },
+            b: { title: b.fundraiser.title, created_at: b.fundraiser.created_at, date: bDate },
+            result: bDate - aDate
+        });
+
         return bDate - aDate; // Descending order (newest first)
     });
 
@@ -250,7 +257,7 @@ export default function MyFundraisers({ user, userProfile }) {
                                                 </p>
                                             )}
                                             <p className="text-gray-500 text-xs">
-                                                {new Date(fundraiser.fundraiser.start_date).toLocaleDateString()} - {new Date(fundraiser.fundraiser.end_date).toLocaleDateString()}
+                                                {new Date(fundraiser.fundraiser.start_date + 'T12:00:00').toLocaleDateString()} - {new Date(fundraiser.fundraiser.end_date + 'T12:00:00').toLocaleDateString()}
                                             </p>
                                         </div>
                                     </div>
