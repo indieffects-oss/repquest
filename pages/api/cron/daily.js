@@ -200,7 +200,7 @@ export default async function handler(req, res) {
                         }, 0);
 
                         try {
-                            await fetch(`${baseUrl}/api/fundraisers/send-final-email`, {
+                            const response = await fetch(`${baseUrl}/api/fundraisers/send-final-email`, {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
                                 body: JSON.stringify({
@@ -210,7 +210,13 @@ export default async function handler(req, res) {
                                     levelsEarned: totalLevels
                                 })
                             });
-                            emailsSent++;
+
+                            if (response.ok) {
+                                emailsSent++;
+                            } else {
+                                const errorData = await response.json().catch(() => ({}));
+                                console.error(`Failed to send email to ${email}:`, response.status, errorData);
+                            }
                         } catch (emailErr) {
                             console.error(`Failed to send final email to ${email}:`, emailErr);
                         }
