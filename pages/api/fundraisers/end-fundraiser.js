@@ -200,9 +200,17 @@ export default async function handler(req, res) {
                 ? fundraiser.owner?.display_name
                 : fundraiser.creator?.display_name;
 
+            console.log(`\n=== Owner Summary Email ===`);
+            console.log(`Fundraiser type: ${fundraiser.fundraiser_type}`);
+            console.log(`Owner email: ${ownerEmail}`);
+            console.log(`Owner name: ${ownerName}`);
+            console.log(`Total pledges for CSV: ${fundraiser.fundraiser_pledges?.length || 0}`);
+
+            let ownerEmailSuccess = false;
             if (ownerEmail) {
                 // Generate CSV data
                 const csvData = generateCSV(fundraiser, totalLevels);
+                console.log(`CSV data generated, length: ${csvData.length} characters`);
 
                 try {
                     console.log(`Attempting to send owner summary to: ${ownerEmail}`);
@@ -223,11 +231,14 @@ export default async function handler(req, res) {
                     if (!response.ok) {
                         console.error(`Failed to send owner summary to ${ownerEmail}:`, result);
                     } else {
-                        console.log(`Successfully sent owner summary to ${ownerEmail}`);
+                        console.log(`✅ Successfully sent owner summary to ${ownerEmail}`);
+                        ownerEmailSuccess = true;
                     }
                 } catch (emailErr) {
                     console.error(`Exception sending owner summary to ${ownerEmail}:`, emailErr);
                 }
+            } else {
+                console.log(`⚠️ No owner email found, skipping owner summary`);
             }
 
             processed.push({
@@ -238,7 +249,7 @@ export default async function handler(req, res) {
                 total_pledges: fundraiser.fundraiser_pledges?.length || 0,
                 donor_emails_attempted: Object.keys(donorEmails).length,
                 donor_email_results: donorEmailResults,
-                owner_email_sent: ownerEmail ? true : false,
+                owner_email_sent: ownerEmailSuccess,
                 owner_email: ownerEmail
             });
         }
