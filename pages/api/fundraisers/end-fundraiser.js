@@ -12,6 +12,7 @@ export default async function handler(req, res) {
         const today = new Date().toISOString().split('T')[0];
 
         // Find fundraisers that ended yesterday or today but are still "active"
+        // FIXED: Changed from lt to lte so fundraisers ending TODAY are processed
         const { data: endedFundraisers, error: fundraisersError } = await supabaseAdmin
             .from('fundraisers')
             .select(`
@@ -26,6 +27,7 @@ export default async function handler(req, res) {
                     id,
                     donor_email,
                     donor_name,
+                    donor_user_id,
                     pledge_type,
                     amount_per_level,
                     max_amount,
@@ -38,7 +40,7 @@ export default async function handler(req, res) {
                 owner:users!owner_id (display_name, email)
             `)
             .eq('status', 'active')
-            .lt('end_date', today);
+            .lte('end_date', today);
 
         if (fundraisersError) throw fundraisersError;
 
@@ -103,9 +105,30 @@ export default async function handler(req, res) {
                 .update({ status: 'ended' })
                 .eq('id', fundraiser.id);
 
-            // Send final emails to all donors
+            // FIXED: Determine who the coach/owner is to exclude them from donor emails
+            const ownerUserId = fundraiser.fundraiser_type === 'player'
+                ? fundraiser.owner_id
+                : fundraiser.created_by;
+
+            console.log(`\n=== Processing Fundraiser: ${fundraiser.title} ===`);
+            console.log(`Fundraiser Type: ${fundraiser.fundraiser_type}`);
+            console.log(`Owner User ID: ${ownerUserId}`);
+            console.log(`Total Pledges: ${fundraiser.fundraiser_pledges?.length || 0}`);
+
+            // Debug: Log all pledges
+            fundraiser.fundraiser_pledges?.forEach((pledge, idx) => {
+                console.log(`Pledge ${idx + 1}: donor_user_id=${pledge.donor_user_id}, email=${pledge.donor_email}, amount=$${pledge.final_amount_owed || 'not calculated'}`);
+            });
+
+            // Send final emails to all donors (excluding coach/owner)
             const donorEmails = {};
             for (const pledge of fundraiser.fundraiser_pledges || []) {
+                // FIXED: Skip if this pledge is from the coach/owner themselves
+                if (pledge.donor_user_id === ownerUserId) {
+                    console.log(`Skipping donor email to coach/owner: ${pledge.donor_email}`);
+                    continue;
+                }
+
                 if (!donorEmails[pledge.donor_email]) {
                     donorEmails[pledge.donor_email] = [];
                 }
@@ -117,12 +140,19 @@ export default async function handler(req, res) {
                 });
             }
 
+            console.log(`\nDonor emails grouped: ${Object.keys(donorEmails).length} unique email(s)`);
+            Object.entries(donorEmails).forEach(([email, pledges]) => {
+                console.log(`  - ${email}: ${pledges.length} pledge(s)`);
+            });
+
             // Send one email per donor with all their pledges
+            const donorEmailResults = [];
             for (const [email, pledges] of Object.entries(donorEmails)) {
                 const totalOwed = pledges.reduce((sum, p) => sum + p.final_amount_owed, 0);
 
                 try {
-                    await fetch(`${baseUrl}/api/fundraisers/send-final-email`, {
+                    console.log(`Attempting to send final email to donor: ${email}, amount: $${totalOwed}`);
+                    const response = await fetch(`${baseUrl}/api/fundraisers/send-final-email`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
@@ -132,8 +162,19 @@ export default async function handler(req, res) {
                             levelsEarned: totalLevels
                         })
                     });
+
+                    const result = await response.json();
+
+                    if (!response.ok) {
+                        console.error(`Failed to send final email to ${email}:`, result);
+                        donorEmailResults.push({ email, success: false, error: result.error || 'Unknown error' });
+                    } else {
+                        console.log(`Successfully sent final email to ${email}`);
+                        donorEmailResults.push({ email, success: true });
+                    }
                 } catch (emailErr) {
-                    console.error(`Failed to send final email to ${email}:`, emailErr);
+                    console.error(`Exception sending final email to ${email}:`, emailErr);
+                    donorEmailResults.push({ email, success: false, error: emailErr.message });
                 }
             }
 
@@ -151,7 +192,8 @@ export default async function handler(req, res) {
                 const csvData = generateCSV(fundraiser, totalLevels);
 
                 try {
-                    await fetch(`${baseUrl}/api/fundraisers/send-owner-summary`, {
+                    console.log(`Attempting to send owner summary to: ${ownerEmail}`);
+                    const response = await fetch(`${baseUrl}/api/fundraisers/send-owner-summary`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
@@ -162,8 +204,16 @@ export default async function handler(req, res) {
                             csvData
                         })
                     });
+
+                    const result = await response.json();
+
+                    if (!response.ok) {
+                        console.error(`Failed to send owner summary to ${ownerEmail}:`, result);
+                    } else {
+                        console.log(`Successfully sent owner summary to ${ownerEmail}`);
+                    }
                 } catch (emailErr) {
-                    console.error(`Failed to send owner summary to ${ownerEmail}:`, emailErr);
+                    console.error(`Exception sending owner summary to ${ownerEmail}:`, emailErr);
                 }
             }
 
@@ -172,7 +222,11 @@ export default async function handler(req, res) {
                 title: fundraiser.title,
                 total_levels: totalLevels,
                 pledges_updated: pledgeUpdates.length,
-                emails_sent: Object.keys(donorEmails).length + (ownerEmail ? 1 : 0)
+                total_pledges: fundraiser.fundraiser_pledges?.length || 0,
+                donor_emails_attempted: Object.keys(donorEmails).length,
+                donor_email_results: donorEmailResults,
+                owner_email_sent: ownerEmail ? true : false,
+                owner_email: ownerEmail
             });
         }
 

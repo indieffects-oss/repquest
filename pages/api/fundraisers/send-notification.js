@@ -131,7 +131,7 @@ async function sendEmail(type, { fundraiser, playerInfo, pledge, data }) {
           
           <p>Thanks for supporting ${playerInfo?.display_name || 'this athlete'}! Your encouragement makes a real difference.</p>
           
-          <a href="${process.env.NEXT_PUBLIC_APP_URL || 'https://mantistimer.com'}/fundraiser/${fundraiser.id}" 
+          <a href="${process.env.NEXT_PUBLIC_APP_URL || 'https://repquest.mantistimer.com'}/fundraiser/${fundraiser.id}" 
              style="display: inline-block; background-color: #3b82f6; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin: 20px 0;">
             View Progress
           </a>
@@ -171,7 +171,7 @@ async function sendEmail(type, { fundraiser, playerInfo, pledge, data }) {
           
           <p>The coach will contact you soon with details on how to complete your pledge. Thank you for making a difference!</p>
           
-          <a href="${process.env.NEXT_PUBLIC_APP_URL || 'https://mantistimer.com'}/fundraiser/${fundraiser.id}" 
+          <a href="${process.env.NEXT_PUBLIC_APP_URL || 'https://repquest.mantistimer.com'}/fundraiser/${fundraiser.id}" 
              style="display: inline-block; background-color: #3b82f6; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin: 20px 0;">
             View Final Results
           </a>
@@ -213,7 +213,7 @@ async function sendEmail(type, { fundraiser, playerInfo, pledge, data }) {
           
           <p>You'll receive email updates as ${playerInfo?.display_name || 'the player(s)'} earn levels. At the end of the fundraiser, we'll send you final details on how to complete your pledge.</p>
           
-          <a href="${process.env.NEXT_PUBLIC_APP_URL || 'https://mantistimer.com'}/fundraiser/${fundraiser.id}" 
+          <a href="${process.env.NEXT_PUBLIC_APP_URL || 'https://repquest.mantistimer.com'}/fundraiser/${fundraiser.id}" 
              style="display: inline-block; background-color: #3b82f6; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin: 20px 0;">
             Track Progress
           </a>
@@ -231,7 +231,7 @@ async function sendEmail(type, { fundraiser, playerInfo, pledge, data }) {
 
   try {
     await resend.emails.send({
-      from: 'RepQuest <noreply@mantistimer.com>', // Update with your domain
+      from: 'RepQuest <noreply@repquest.app>', // Update with your domain
       to: donorEmail,
       subject: subject,
       html: htmlContent

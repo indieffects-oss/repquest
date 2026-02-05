@@ -36,8 +36,8 @@ export default async function handler(req, res) {
 
         const subject = `Fundraiser Complete: ${fundraiser.title} - Final Total: $${totalOwed.toFixed(2)}`;
 
-        // FIXED: Use NEXT_PUBLIC_APP_URL with better fallback
-        const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://mantistimer.com';
+        // FIXED: Use correct production URL
+        const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://repquest.mantistimer.com';
 
         const htmlContent = `
             <div style="${baseStyle}">
