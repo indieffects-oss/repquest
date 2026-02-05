@@ -68,7 +68,7 @@ export default async function handler(req, res) {
                 : `
                                             <p style="margin: 0;"><strong>Per-Level Pledge:</strong></p>
                                             <p style="margin: 5px 0; color: #6b7280;">$${parseFloat(p.amount_per_level).toFixed(2)} per level (max $${parseFloat(p.max_amount).toFixed(2)})</p>
-                                            <p style="margin: 0;"><strong>Final:</strong> $${p.final_amount_owed.toFixed(2)}</p>
+                                            <p style="margin: 0;"><strong>Final:</strong> $${(p.final_amount_owed || 0).toFixed(2)}</p>
                                         `
             }
                                 </div>

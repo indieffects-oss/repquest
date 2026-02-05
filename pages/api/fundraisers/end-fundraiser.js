@@ -72,6 +72,7 @@ export default async function handler(req, res) {
 
                 if (pledge.pledge_type === 'flat') {
                     finalAmount = parseFloat(pledge.flat_amount) || 0;
+                    console.log(`  Flat pledge ${pledge.id}: $${finalAmount}`);
                 } else {
                     // Get levels for specific player if pledge is player-specific
                     let levelsForPledge = totalLevels;
@@ -81,10 +82,14 @@ export default async function handler(req, res) {
                             p => p.user_id === pledge.player_id
                         );
                         levelsForPledge = playerProgress?.fundraiser_levels_earned || 0;
+                        console.log(`  Per-level pledge ${pledge.id} for player ${pledge.player_id}: ${levelsForPledge} levels`);
+                    } else {
+                        console.log(`  Per-level pledge ${pledge.id} (team-wide): ${levelsForPledge} levels`);
                     }
 
                     const uncapped = levelsForPledge * (parseFloat(pledge.amount_per_level) || 0);
                     finalAmount = Math.min(uncapped, parseFloat(pledge.max_amount) || 0);
+                    console.log(`    Calculation: ${levelsForPledge} levels × $${pledge.amount_per_level} = $${uncapped}, capped at $${pledge.max_amount} = $${finalAmount}`);
                 }
 
                 pledgeUpdates.push({
@@ -134,15 +139,23 @@ export default async function handler(req, res) {
                 }
 
                 const updatedPledge = pledgeUpdates.find(p => p.id === pledge.id);
+                if (!updatedPledge) {
+                    console.error(`ERROR: Could not find updated pledge for id ${pledge.id}`);
+                    continue;
+                }
+
                 donorEmails[pledge.donor_email].push({
                     ...pledge,
-                    final_amount_owed: updatedPledge.final_amount_owed
+                    final_amount_owed: updatedPledge.final_amount_owed || 0
                 });
             }
 
             console.log(`\nDonor emails grouped: ${Object.keys(donorEmails).length} unique email(s)`);
             Object.entries(donorEmails).forEach(([email, pledges]) => {
                 console.log(`  - ${email}: ${pledges.length} pledge(s)`);
+                pledges.forEach((p, idx) => {
+                    console.log(`    Pledge ${idx + 1}: type=${p.pledge_type}, final_amount=${p.final_amount_owed}`);
+                });
             });
 
             // Send one email per donor with all their pledges
