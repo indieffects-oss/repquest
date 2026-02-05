@@ -136,7 +136,7 @@ export default async function handler(req, res) {
 
         // Send email with CSV attachment
         await resend.emails.send({
-            from: 'RepQuest <noreply@repquest.app>',
+            from: 'RepQuest <noreply@mantistimer.com>',
             to: ownerEmail,
             subject: subject,
             html: htmlContent,

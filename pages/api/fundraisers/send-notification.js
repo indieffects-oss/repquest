@@ -7,92 +7,92 @@ import { supabaseAdmin } from '../../../lib/supabaseAdmin';
 const resend = new Resend(process.env.RESEND_API_KEY);
 
 export default async function handler(req, res) {
-    if (req.method !== 'POST') {
-        return res.status(405).json({ error: 'Method not allowed' });
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Method not allowed' });
+  }
+
+  try {
+    const {
+      fundraiser_id,
+      user_id,
+      notification_type, // 'level_up', 'fundraiser_ended', 'pledge_confirmed'
+      data
+    } = req.body;
+
+    if (!fundraiser_id || !notification_type) {
+      return res.status(400).json({ error: 'Missing required fields' });
     }
 
-    try {
-        const {
-            fundraiser_id,
-            user_id,
-            notification_type, // 'level_up', 'fundraiser_ended', 'pledge_confirmed'
-            data
-        } = req.body;
-
-        if (!fundraiser_id || !notification_type) {
-            return res.status(400).json({ error: 'Missing required fields' });
-        }
-
-        // Get fundraiser details
-        const { data: fundraiser, error: fundraiserError } = await supabaseAdmin
-            .from('fundraisers')
-            .select(`
+    // Get fundraiser details
+    const { data: fundraiser, error: fundraiserError } = await supabaseAdmin
+      .from('fundraisers')
+      .select(`
         *,
         team:teams!team_id (name, logo_url),
         creator:users!created_by (display_name, email)
       `)
-            .eq('id', fundraiser_id)
-            .single();
+      .eq('id', fundraiser_id)
+      .single();
 
-        if (fundraiserError || !fundraiser) {
-            return res.status(404).json({ error: 'Fundraiser not found' });
-        }
-
-        // Get player info if user_id provided
-        let playerInfo = null;
-        if (user_id) {
-            const { data: player } = await supabaseAdmin
-                .from('users')
-                .select('display_name, email')
-                .eq('id', user_id)
-                .single();
-
-            playerInfo = player;
-        }
-
-        // Get all pledges for this fundraiser
-        const { data: pledges, error: pledgesError } = await supabaseAdmin
-            .from('fundraiser_pledges')
-            .select('donor_email, donor_name, pledge_type, amount_per_level, max_amount, flat_amount')
-            .eq('fundraiser_id', fundraiser_id);
-
-        if (pledgesError || !pledges || pledges.length === 0) {
-            return res.status(200).json({
-                success: true,
-                message: 'No donors to notify'
-            });
-        }
-
-        // Send emails based on notification type
-        const emailPromises = pledges.map(pledge => {
-            return sendEmail(notification_type, {
-                fundraiser,
-                playerInfo,
-                pledge,
-                data
-            });
-        });
-
-        await Promise.all(emailPromises);
-
-        return res.status(200).json({
-            success: true,
-            message: `Sent ${emailPromises.length} notification(s)`
-        });
-    } catch (error) {
-        console.error('Error sending notifications:', error);
-        return res.status(500).json({ error: error.message });
+    if (fundraiserError || !fundraiser) {
+      return res.status(404).json({ error: 'Fundraiser not found' });
     }
+
+    // Get player info if user_id provided
+    let playerInfo = null;
+    if (user_id) {
+      const { data: player } = await supabaseAdmin
+        .from('users')
+        .select('display_name, email')
+        .eq('id', user_id)
+        .single();
+
+      playerInfo = player;
+    }
+
+    // Get all pledges for this fundraiser
+    const { data: pledges, error: pledgesError } = await supabaseAdmin
+      .from('fundraiser_pledges')
+      .select('donor_email, donor_name, pledge_type, amount_per_level, max_amount, flat_amount')
+      .eq('fundraiser_id', fundraiser_id);
+
+    if (pledgesError || !pledges || pledges.length === 0) {
+      return res.status(200).json({
+        success: true,
+        message: 'No donors to notify'
+      });
+    }
+
+    // Send emails based on notification type
+    const emailPromises = pledges.map(pledge => {
+      return sendEmail(notification_type, {
+        fundraiser,
+        playerInfo,
+        pledge,
+        data
+      });
+    });
+
+    await Promise.all(emailPromises);
+
+    return res.status(200).json({
+      success: true,
+      message: `Sent ${emailPromises.length} notification(s)`
+    });
+  } catch (error) {
+    console.error('Error sending notifications:', error);
+    return res.status(500).json({ error: error.message });
+  }
 }
 
 async function sendEmail(type, { fundraiser, playerInfo, pledge, data }) {
-    const donorEmail = pledge.donor_email;
-    const donorName = pledge.donor_name || 'Supporter';
+  const donorEmail = pledge.donor_email;
+  const donorName = pledge.donor_name || 'Supporter';
 
-    let subject = '';
-    let htmlContent = '';
+  let subject = '';
+  let htmlContent = '';
 
-    const baseStyle = `
+  const baseStyle = `
     font-family: Arial, sans-serif;
     max-width: 600px;
     margin: 0 auto;
@@ -100,19 +100,19 @@ async function sendEmail(type, { fundraiser, playerInfo, pledge, data }) {
     padding: 20px;
   `;
 
-    const cardStyle = `
+  const cardStyle = `
     background-color: white;
     border-radius: 8px;
     padding: 30px;
     box-shadow: 0 2px 4px rgba(0,0,0,0.1);
   `;
 
-    if (type === 'level_up') {
-        const { new_level } = data || {};
+  if (type === 'level_up') {
+    const { new_level } = data || {};
 
-        subject = `🎉 ${playerInfo?.display_name || 'Player'} just leveled up!`;
+    subject = `🎉 ${playerInfo?.display_name || 'Player'} just leveled up!`;
 
-        htmlContent = `
+    htmlContent = `
       <div style="${baseStyle}">
         <div style="${cardStyle}">
           <h1 style="color: #059669; margin-top: 0;">Level Up Alert! 🎉</h1>
@@ -131,7 +131,7 @@ async function sendEmail(type, { fundraiser, playerInfo, pledge, data }) {
           
           <p>Thanks for supporting ${playerInfo?.display_name || 'this athlete'}! Your encouragement makes a real difference.</p>
           
-          <a href="${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/fundraiser/${fundraiser.id}" 
+          <a href="${process.env.NEXT_PUBLIC_APP_URL || 'https://mantistimer.com'}/fundraiser/${fundraiser.id}" 
              style="display: inline-block; background-color: #3b82f6; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin: 20px 0;">
             View Progress
           </a>
@@ -145,12 +145,12 @@ async function sendEmail(type, { fundraiser, playerInfo, pledge, data }) {
         </div>
       </div>
     `;
-    } else if (type === 'fundraiser_ended') {
-        const { levels_earned, final_amount } = data || {};
+  } else if (type === 'fundraiser_ended') {
+    const { levels_earned, final_amount } = data || {};
 
-        subject = `Fundraiser Complete: ${fundraiser.title}`;
+    subject = `Fundraiser Complete: ${fundraiser.title}`;
 
-        htmlContent = `
+    htmlContent = `
       <div style="${baseStyle}">
         <div style="${cardStyle}">
           <h1 style="color: #3b82f6; margin-top: 0;">Fundraiser Complete! 🏁</h1>
@@ -171,7 +171,7 @@ async function sendEmail(type, { fundraiser, playerInfo, pledge, data }) {
           
           <p>The coach will contact you soon with details on how to complete your pledge. Thank you for making a difference!</p>
           
-          <a href="${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/fundraiser/${fundraiser.id}" 
+          <a href="${process.env.NEXT_PUBLIC_APP_URL || 'https://mantistimer.com'}/fundraiser/${fundraiser.id}" 
              style="display: inline-block; background-color: #3b82f6; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin: 20px 0;">
             View Final Results
           </a>
@@ -184,12 +184,12 @@ async function sendEmail(type, { fundraiser, playerInfo, pledge, data }) {
         </div>
       </div>
     `;
-    } else if (type === 'pledge_confirmed') {
-        const { estimated_amount } = data || {};
+  } else if (type === 'pledge_confirmed') {
+    const { estimated_amount } = data || {};
 
-        subject = `Pledge Confirmed: ${fundraiser.title}`;
+    subject = `Pledge Confirmed: ${fundraiser.title}`;
 
-        htmlContent = `
+    htmlContent = `
       <div style="${baseStyle}">
         <div style="${cardStyle}">
           <h1 style="color: #059669; margin-top: 0;">Thank You for Your Pledge! 💚</h1>
@@ -213,7 +213,7 @@ async function sendEmail(type, { fundraiser, playerInfo, pledge, data }) {
           
           <p>You'll receive email updates as ${playerInfo?.display_name || 'the player(s)'} earn levels. At the end of the fundraiser, we'll send you final details on how to complete your pledge.</p>
           
-          <a href="${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/fundraiser/${fundraiser.id}" 
+          <a href="${process.env.NEXT_PUBLIC_APP_URL || 'https://mantistimer.com'}/fundraiser/${fundraiser.id}" 
              style="display: inline-block; background-color: #3b82f6; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin: 20px 0;">
             Track Progress
           </a>
@@ -227,19 +227,19 @@ async function sendEmail(type, { fundraiser, playerInfo, pledge, data }) {
         </div>
       </div>
     `;
-    }
+  }
 
-    try {
-        await resend.emails.send({
-            from: 'RepQuest <noreply@repquest.app>', // Update with your domain
-            to: donorEmail,
-            subject: subject,
-            html: htmlContent
-        });
+  try {
+    await resend.emails.send({
+      from: 'RepQuest <noreply@mantistimer.com>', // Update with your domain
+      to: donorEmail,
+      subject: subject,
+      html: htmlContent
+    });
 
-        console.log(`Email sent to ${donorEmail}: ${subject}`);
-    } catch (error) {
-        console.error(`Failed to send email to ${donorEmail}:`, error);
-        // Don't throw - log and continue with other emails
-    }
+    console.log(`Email sent to ${donorEmail}: ${subject}`);
+  } catch (error) {
+    console.error(`Failed to send email to ${donorEmail}:`, error);
+    // Don't throw - log and continue with other emails
+  }
 }

@@ -36,6 +36,9 @@ export default async function handler(req, res) {
 
         const subject = `Fundraiser Complete: ${fundraiser.title} - Final Total: $${totalOwed.toFixed(2)}`;
 
+        // FIXED: Use NEXT_PUBLIC_APP_URL with better fallback
+        const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://mantistimer.com';
+
         const htmlContent = `
             <div style="${baseStyle}">
                 <div style="${cardStyle}">
@@ -95,7 +98,7 @@ export default async function handler(req, res) {
 
                     <p>Your support made a real difference for <strong>${fundraiser.team?.name || 'the team'}</strong>. Thank you for being part of their journey!</p>
                     
-                    <a href="${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/fundraiser/${fundraiser.id}" 
+                    <a href="${appUrl}/fundraiser/${fundraiser.id}" 
                        style="display: inline-block; background-color: #3b82f6; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin: 20px 0;">
                         View Final Results
                     </a>
