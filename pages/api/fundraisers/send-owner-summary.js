@@ -37,6 +37,46 @@ export default async function handler(req, res) {
 
         const subject = `🎉 Fundraiser Complete: ${fundraiser.title} - Raised $${totalRaised.toFixed(2)}!`;
 
+        // Build rewards section if prize tiers exist
+        let rewardsSection = '';
+        if (fundraiser.prize_tiers && fundraiser.prize_tiers.length > 0) {
+            const sortedTiers = [...fundraiser.prize_tiers].sort((a, b) => b.amount - a.amount);
+
+            const tiersList = sortedTiers.map(tier => {
+                const qualifiedDonors = (fundraiser.fundraiser_pledges || []).filter(pledge => {
+                    return (pledge.final_amount_owed || 0) >= tier.amount;
+                });
+
+                return `
+                    <div style="margin: 15px 0; padding: 12px; background-color: white; border-radius: 6px;">
+                        <p style="margin: 0 0 8px 0; color: #92400e; font-weight: bold;">
+                            $$${tier.amount}+ Tier: ${tier.description}
+                        </p>
+                        ${qualifiedDonors.length > 0 ? `
+                            <p style="margin: 5px 0 0 0; color: #78350f; font-size: 14px;">
+                                <strong>Qualified (${qualifiedDonors.length}):</strong> 
+                                ${qualifiedDonors.map(d => d.donor_name).join(', ')}
+                            </p>
+                        ` : `
+                            <p style="margin: 5px 0 0 0; color: #9ca3af; font-size: 14px; font-style: italic;">
+                                No donors reached this tier
+                            </p>
+                        `}
+                    </div>
+                `;
+            }).join('');
+
+            rewardsSection = `
+                <div style="background-color: #fef3c7; border-radius: 8px; padding: 20px; margin: 20px 0; border-left: 4px solid #f59e0b;">
+                    <h3 style="margin-top: 0; color: #92400e;">🎁 Reward Tiers & Who Qualified</h3>
+                    ${tiersList}
+                    <p style="margin: 15px 0 0 0; color: #78350f; font-size: 14px;">
+                        💡 Donors have been notified of their qualified rewards in their confirmation emails.
+                    </p>
+                </div>
+            `;
+        }
+
         const htmlContent = `
             <div style="${baseStyle}">
                 <div style="${cardStyle}">
@@ -55,7 +95,7 @@ export default async function handler(req, res) {
                             <strong>Total Pledges:</strong> ${totalPledges}
                         </p>
                         <p style="font-size: 28px; color: #059669; margin: 10px 0; font-weight: bold;">
-                            Total Raised: $${totalRaised.toFixed(2)}
+                            Total Raised: $$${totalRaised.toFixed(2)}
                         </p>
                     </div>
 
@@ -96,6 +136,8 @@ export default async function handler(req, res) {
                             <li>Keep the spreadsheet updated to track who's paid</li>
                         </ul>
                     </div>
+
+                    ${rewardsSection}
 
                     ${fundraiser.fundraiser_type === 'team' ? `
                         <div style="background-color: #f0fdf4; border-radius: 8px; padding: 15px; margin: 20px 0;">

@@ -36,8 +36,41 @@ export default async function handler(req, res) {
 
         const subject = `Fundraiser Complete: ${fundraiser.title} - Final Total: $${totalOwed.toFixed(2)}`;
 
-        // FIXED: Use correct production URL
         const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://repquest.mantistimer.com';
+
+        // Calculate qualified rewards
+        let rewardsSection = '';
+        if (fundraiser.prize_tiers && fundraiser.prize_tiers.length > 0) {
+            const sortedTiers = [...fundraiser.prize_tiers].sort((a, b) => b.amount - a.amount);
+            const qualifiedTiers = sortedTiers.filter(tier => totalOwed >= tier.amount);
+
+            if (qualifiedTiers.length > 0) {
+                rewardsSection = `
+                    <div style="background-color: #fef3c7; border-radius: 8px; padding: 20px; margin: 20px 0; border-left: 4px solid #f59e0b;">
+                        <h2 style="margin-top: 0; color: #92400e;">🎁 Your Rewards</h2>
+                        <p style="margin: 0 0 15px 0; color: #78350f; font-weight: bold;">🎉 You qualified for:</p>
+                        <ul style="color: #78350f; margin: 5px 0; padding-left: 20px;">
+                            ${qualifiedTiers.map(tier => `
+                                <li style="margin: 8px 0;">
+                                    <strong>$${tier.amount}+ Tier:</strong> ${tier.description}
+                                </li>
+                            `).join('')}
+                        </ul>
+                        <p style="margin: 15px 0 0 0; color: #78350f; font-size: 14px;">
+                            The coach will contact you about fulfilling these rewards!
+                        </p>
+                    </div>
+                `;
+            } else {
+                rewardsSection = `
+                    <div style="background-color: #f3f4f6; border-radius: 8px; padding: 15px; margin: 20px 0; border-left: 4px solid #9ca3af;">
+                        <p style="margin: 0; color: #4b5563; font-size: 14px;">
+                            Thank you for your support! While you didn't reach a reward tier this time, your contribution made a real difference.
+                        </p>
+                    </div>
+                `;
+            }
+        }
 
         const htmlContent = `
             <div style="${baseStyle}">
@@ -57,6 +90,8 @@ export default async function handler(req, res) {
                             Your Total: $${totalOwed.toFixed(2)}
                         </p>
                     </div>
+
+                    ${rewardsSection}
 
                     ${pledges.length > 1 ? `
                         <div style="background-color: #f3f4f6; border-radius: 8px; padding: 15px; margin: 20px 0;">
