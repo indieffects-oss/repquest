@@ -109,6 +109,16 @@ export default async function handler(req, res) {
                 .update({ status: 'ended' })
                 .eq('id', fundraiser.id);
 
+            // CRITICAL: Update the fundraiser object's pledges with the calculated final_amount_owed
+            // Otherwise the coach email will show $0 because the original pledges don't have final_amount_owed
+            fundraiser.fundraiser_pledges = fundraiser.fundraiser_pledges?.map(pledge => {
+                const updatedPledge = pledgeUpdates.find(p => p.id === pledge.id);
+                return {
+                    ...pledge,
+                    final_amount_owed: updatedPledge?.final_amount_owed || 0
+                };
+            });
+
             // FIXED: Determine who the coach/owner is to exclude them from donor emails
             const ownerUserId = fundraiser.fundraiser_type === 'player'
                 ? fundraiser.owner_id
