@@ -91,149 +91,32 @@ export default async function handler(req, res) {
         // 3. FUNDRAISERS - End campaigns & send emails
         // ========================================
         try {
-            const today = new Date().toISOString().split('T')[0];
+            const protocol = req.headers['x-forwarded-proto'] || 'https';
+            const host = req.headers['host'];
+            const baseUrl = `${protocol}://${host}`;
 
-            // Find fundraisers that ended but are still "active"
-            const { data: endedFundraisers, error: fundraisersError } = await supabase
-                .from('fundraisers')
-                .select(`
-                    *,
-                    fundraiser_progress (
-                        user_id,
-                        fundraiser_levels_earned,
-                        fundraiser_points_earned
-                    ),
-                    fundraiser_pledges (
-                        id,
-                        donor_email,
-                        donor_name,
-                        pledge_type,
-                        amount_per_level,
-                        max_amount,
-                        flat_amount,
-                        player_id
-                    ),
-                    team:teams!team_id (name),
-                    creator:users!created_by (display_name, email)
-                `)
-                .eq('status', 'active')
-                .lt('end_date', today);
+            console.log('Calling end-fundraiser endpoint...');
 
-            if (fundraisersError) {
-                console.error('Error fetching ended fundraisers:', fundraisersError);
-                results.fundraisers.error = fundraisersError.message;
+            const fundraiserResponse = await fetch(`${baseUrl}/api/fundraisers/end-fundraiser`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            });
+
+            console.log(`End-fundraiser response status: ${fundraiserResponse.status}`);
+
+            if (!fundraiserResponse.ok) {
+                const errorText = await fundraiserResponse.text();
+                console.error('End-fundraiser failed:', errorText);
+                results.fundraisers.error = errorText;
             } else {
-                const processedFundraisers = [];
+                const fundraiserData = await fundraiserResponse.json();
+                console.log('End-fundraiser response:', JSON.stringify(fundraiserData, null, 2));
 
-                for (const fundraiser of endedFundraisers || []) {
-                    // Calculate total levels earned
-                    const totalLevels = fundraiser.fundraiser_progress?.reduce(
-                        (sum, p) => sum + (p.fundraiser_levels_earned || 0),
-                        0
-                    ) || 0;
+                results.fundraisers.success = fundraiserData.success || false;
+                results.fundraisers.processed_count = fundraiserData.processed?.length || 0;
+                results.fundraisers.processed = fundraiserData.processed || [];
 
-                    // Calculate and update final amounts for each pledge
-                    for (const pledge of fundraiser.fundraiser_pledges || []) {
-                        let finalAmount = 0;
-
-                        if (pledge.pledge_type === 'flat') {
-                            finalAmount = parseFloat(pledge.flat_amount) || 0;
-                        } else {
-                            // Get levels for specific player if pledge is player-specific
-                            let levelsForPledge = totalLevels;
-
-                            if (pledge.player_id) {
-                                const playerProgress = fundraiser.fundraiser_progress?.find(
-                                    p => p.user_id === pledge.player_id
-                                );
-                                levelsForPledge = playerProgress?.fundraiser_levels_earned || 0;
-                            }
-
-                            const uncapped = levelsForPledge * (parseFloat(pledge.amount_per_level) || 0);
-                            finalAmount = Math.min(uncapped, parseFloat(pledge.max_amount) || 0);
-                        }
-
-                        // Update pledge with final amount
-                        await supabase
-                            .from('fundraiser_pledges')
-                            .update({ final_amount_owed: finalAmount })
-                            .eq('id', pledge.id);
-                    }
-
-                    // Update fundraiser status to 'ended'
-                    await supabase
-                        .from('fundraisers')
-                        .update({ status: 'ended' })
-                        .eq('id', fundraiser.id);
-
-                    // Send final emails to donors
-                    const protocol = req.headers['x-forwarded-proto'] || 'https';
-                    const host = req.headers['host'];
-                    const baseUrl = `${protocol}://${host}`;
-
-                    // Group pledges by donor
-                    const donorEmails = {};
-                    for (const pledge of fundraiser.fundraiser_pledges || []) {
-                        if (!donorEmails[pledge.donor_email]) {
-                            donorEmails[pledge.donor_email] = [];
-                        }
-                        donorEmails[pledge.donor_email].push(pledge);
-                    }
-
-                    // Send one email per donor
-                    let emailsSent = 0;
-                    for (const [email, pledges] of Object.entries(donorEmails)) {
-                        const totalOwed = pledges.reduce((sum, p) => {
-                            if (p.pledge_type === 'flat') {
-                                return sum + (parseFloat(p.flat_amount) || 0);
-                            } else {
-                                let levels = totalLevels;
-                                if (p.player_id) {
-                                    const progress = fundraiser.fundraiser_progress?.find(
-                                        pr => pr.user_id === p.player_id
-                                    );
-                                    levels = progress?.fundraiser_levels_earned || 0;
-                                }
-                                const uncapped = levels * (parseFloat(p.amount_per_level) || 0);
-                                return sum + Math.min(uncapped, parseFloat(p.max_amount) || 0);
-                            }
-                        }, 0);
-
-                        try {
-                            const response = await fetch(`${baseUrl}/api/fundraisers/send-final-email`, {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({
-                                    fundraiser,
-                                    pledges,
-                                    totalOwed,
-                                    levelsEarned: totalLevels
-                                })
-                            });
-
-                            if (response.ok) {
-                                emailsSent++;
-                            } else {
-                                const errorData = await response.json().catch(() => ({}));
-                                console.error(`Failed to send email to ${email}:`, response.status, errorData);
-                            }
-                        } catch (emailErr) {
-                            console.error(`Failed to send final email to ${email}:`, emailErr);
-                        }
-                    }
-
-                    processedFundraisers.push({
-                        id: fundraiser.id,
-                        title: fundraiser.title,
-                        total_levels: totalLevels,
-                        emails_sent: emailsSent
-                    });
-                }
-
-                console.log(`Processed ${processedFundraisers.length} ended fundraisers`);
-                results.fundraisers.success = true;
-                results.fundraisers.processed_count = processedFundraisers.length;
-                results.fundraisers.processed = processedFundraisers;
+                console.log(`Processed ${results.fundraisers.processed_count} ended fundraisers`);
             }
         } catch (fundraiserError) {
             console.error('Fundraiser cron error:', fundraiserError);
