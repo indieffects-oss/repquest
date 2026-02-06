@@ -36,8 +36,7 @@ export default async function handler(req, res) {
                     player:users!player_id (display_name)
                 ),
                 team:teams!team_id (name),
-                creator:users!created_by (display_name, email),
-                owner:users!owner_id (display_name, email)
+                creator:users!created_by (display_name, email)
             `)
             .eq('status', 'active')
             .lte('end_date', today);
@@ -192,13 +191,24 @@ export default async function handler(req, res) {
             }
 
             // Send summary email to coach/player owner with CSV data
-            const ownerEmail = fundraiser.fundraiser_type === 'player'
-                ? fundraiser.owner?.email
-                : fundraiser.creator?.email;
+            let ownerEmail = null;
+            let ownerName = null;
 
-            const ownerName = fundraiser.fundraiser_type === 'player'
-                ? fundraiser.owner?.display_name
-                : fundraiser.creator?.display_name;
+            if (fundraiser.fundraiser_type === 'player') {
+                // For player fundraisers, fetch the owner info
+                const { data: ownerData } = await supabaseAdmin
+                    .from('users')
+                    .select('email, display_name')
+                    .eq('id', fundraiser.owner_id)
+                    .single();
+
+                ownerEmail = ownerData?.email;
+                ownerName = ownerData?.display_name;
+            } else {
+                // For team fundraisers, use creator
+                ownerEmail = fundraiser.creator?.email;
+                ownerName = fundraiser.creator?.display_name;
+            }
 
             console.log(`\n=== Owner Summary Email ===`);
             console.log(`Fundraiser type: ${fundraiser.fundraiser_type}`);
