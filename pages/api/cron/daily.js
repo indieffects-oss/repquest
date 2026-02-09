@@ -123,6 +123,33 @@ export default async function handler(req, res) {
             results.fundraisers.error = fundraiserError.message;
         }
 
+        // ========================================
+        // 4. SEND ADMIN NOTIFICATION EMAIL
+        // ========================================
+        try {
+            const adminEmail = process.env.ADMIN_EMAIL || 'indieffects@gmail.com';
+
+            console.log(`Sending cron summary to admin: ${adminEmail}`);
+
+            const summaryResponse = await fetch(`${baseUrl}/api/cron/send-summary`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    adminEmail,
+                    results
+                })
+            });
+
+            if (summaryResponse.ok) {
+                console.log('✅ Admin notification sent');
+            } else {
+                console.error('Failed to send admin notification');
+            }
+        } catch (emailErr) {
+            console.error('Error sending admin notification:', emailErr);
+            // Don't fail the whole cron if email fails
+        }
+
         // Return combined results
         return res.status(200).json({
             success: true,
