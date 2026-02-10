@@ -91,12 +91,13 @@ export default async function handler(req, res) {
         // 3. FUNDRAISERS - End campaigns & send emails
         // ========================================
         try {
-            const protocol = req.headers['x-forwarded-proto'] || 'https';
-            const host = req.headers['host'];
-            const baseUrl = `${protocol}://${host}`;
-
+            // CRITICAL FIX: Vercel cron jobs don't have reliable req.headers.host
+            // Use hardcoded URL for production
+            const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://repquest.mantistimer.com';
+            
+            console.log(`Base URL: ${baseUrl}`);
             console.log('Calling end-fundraiser endpoint...');
-
+            
             const fundraiserResponse = await fetch(`${baseUrl}/api/fundraisers/end-fundraiser`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' }
@@ -128,9 +129,10 @@ export default async function handler(req, res) {
         // ========================================
         try {
             const adminEmail = process.env.ADMIN_EMAIL || 'indieffects@gmail.com';
-
+            const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://repquest.mantistimer.com';
+            
             console.log(`Sending cron summary to admin: ${adminEmail}`);
-
+            
             const summaryResponse = await fetch(`${baseUrl}/api/cron/send-summary`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
