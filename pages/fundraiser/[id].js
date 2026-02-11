@@ -12,6 +12,7 @@ export default function FundraiserPage({ user, userProfile }) {
     const [progress, setProgress] = useState([]);
     const [pledges, setPledges] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [authLoading, setAuthLoading] = useState(true); // Track if auth is still loading
     const [showPledgeForm, setShowPledgeForm] = useState(false);
     const [submitting, setSubmitting] = useState(false);
     const [existingPledges, setExistingPledges] = useState([]);
@@ -28,6 +29,23 @@ export default function FundraiserPage({ user, userProfile }) {
         if (!id) return;
         fetchFundraiser();
     }, [id]);
+
+    // Track when auth has finished loading
+    useEffect(() => {
+        // Auth is considered loaded when either:
+        // 1. We have a user, OR
+        // 2. We've waited long enough to know there's no user
+        const timer = setTimeout(() => {
+            setAuthLoading(false);
+        }, 500); // Give auth 500ms to load
+
+        if (user !== undefined && user !== null) {
+            setAuthLoading(false);
+            clearTimeout(timer);
+        }
+
+        return () => clearTimeout(timer);
+    }, [user]);
 
     const fetchFundraiser = async () => {
         try {
@@ -460,9 +478,14 @@ export default function FundraiserPage({ user, userProfile }) {
                     <div className="text-center mb-6">
                         <button
                             onClick={handleMakePledgeClick}
-                            className="bg-green-600 hover:bg-green-700 text-white px-8 py-4 rounded-lg font-bold text-lg transition"
+                            disabled={authLoading}
+                            className={`px-8 py-4 rounded-lg font-bold text-lg transition ${
+                                authLoading
+                                    ? 'bg-gray-600 text-gray-400 cursor-not-allowed'
+                                    : 'bg-green-600 hover:bg-green-700 text-white'
+                            }`}
                         >
-                            💰 Make a Pledge
+                            {authLoading ? '⏳ Loading...' : '💰 Make a Pledge'}
                         </button>
                     </div>
                 )}
