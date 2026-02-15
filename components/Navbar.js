@@ -7,6 +7,7 @@ import { useState, useEffect, useMemo } from 'react';
 export default function Navbar({ user, userProfile, onProfileUpdate }) {
   const router = useRouter();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [mobileHelpOpen, setMobileHelpOpen] = useState(false); // New state for help menu
   const [myTeams, setMyTeams] = useState([]);
   const [switchingTeam, setSwitchingTeam] = useState(false);
 
@@ -244,6 +245,15 @@ export default function Navbar({ user, userProfile, onProfileUpdate }) {
                     }`}
                 >
                   My Results
+                </Link>
+                <Link
+                  href="/measurements"
+                  className={`px-4 py-2 rounded-lg transition ${isActive('/measurements')
+                    ? 'bg-white/20 text-white backdrop-blur-sm'
+                    : 'text-white/90 hover:bg-white/10'
+                    }`}
+                >
+                  Measurements
                 </Link>
               </>
             ) : userProfile?.role === 'fan' ? (
@@ -539,6 +549,16 @@ export default function Navbar({ user, userProfile, onProfileUpdate }) {
                 >
                   My Results
                 </Link>
+                <Link
+                  href="/measurements"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className={`block px-4 py-3 rounded-lg transition ${isActive('/measurements')
+                    ? 'bg-white/20 text-white backdrop-blur-sm'
+                    : 'text-white/90 hover:bg-white/10'
+                    }`}
+                >
+                  Measurements
+                </Link>
               </>
             ) : userProfile?.role === 'fan' ? (
               <>
@@ -568,40 +588,57 @@ export default function Navbar({ user, userProfile, onProfileUpdate }) {
             )}
 
             <div className="bg-white/5 rounded-lg p-2">
-              <p className="text-white/60 text-xs px-2 mb-1 font-semibold uppercase">Help</p>
-              <Link
-                href="/help"
-                onClick={() => setMobileMenuOpen(false)}
-                className={`block px-4 py-3 rounded-lg transition ${isActive('/help')
-                  ? 'bg-white/20 text-white backdrop-blur-sm'
-                  : 'text-white/90 hover:bg-white/10'
-                  }`}
+              <button
+                onClick={() => setMobileHelpOpen(!mobileHelpOpen)}
+                className="w-full flex items-center justify-between px-2 py-2 text-white/60 text-xs font-semibold uppercase hover:text-white transition"
               >
-                📚 Getting Started
-              </Link>
-              <Link
-                href="/help#videos"
-                onClick={() => setMobileMenuOpen(false)}
-                className={`block px-4 py-3 rounded-lg transition text-white/90 hover:bg-white/10`}
-              >
-                🎥 Video Tutorials
-              </Link>
-              <a
-                href="mailto:support@MANTIStimer.com"
-                className={`block px-4 py-3 rounded-lg transition text-white/90 hover:bg-white/10`}
-              >
-                📧 Contact Support
-              </a>
-              <Link
-                href="/about"
-                onClick={() => setMobileMenuOpen(false)}
-                className={`block px-4 py-3 rounded-lg transition ${isActive('/about')
-                  ? 'bg-white/20 text-white backdrop-blur-sm'
-                  : 'text-white/90 hover:bg-white/10'
-                  }`}
-              >
-                ℹ️ About RepQuest
-              </Link>
+                <span>Help</span>
+                <svg
+                  className={`w-4 h-4 transition-transform ${mobileHelpOpen ? 'rotate-180' : ''}`}
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+              {mobileHelpOpen && (
+                <>
+                  <Link
+                    href="/help"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className={`block px-4 py-3 rounded-lg transition ${isActive('/help')
+                      ? 'bg-white/20 text-white backdrop-blur-sm'
+                      : 'text-white/90 hover:bg-white/10'
+                      }`}
+                  >
+                    📚 Getting Started
+                  </Link>
+                  <Link
+                    href="/help#videos"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className={`block px-4 py-3 rounded-lg transition text-white/90 hover:bg-white/10`}
+                  >
+                    🎥 Video Tutorials
+                  </Link>
+                  <a
+                    href="mailto:support@MANTIStimer.com"
+                    className={`block px-4 py-3 rounded-lg transition text-white/90 hover:bg-white/10`}
+                  >
+                    📧 Contact Support
+                  </a>
+                  <Link
+                    href="/about"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className={`block px-4 py-3 rounded-lg transition ${isActive('/about')
+                      ? 'bg-white/20 text-white backdrop-blur-sm'
+                      : 'text-white/90 hover:bg-white/10'
+                      }`}
+                  >
+                    ℹ️ About RepQuest
+                  </Link>
+                </>
+              )}
             </div>
 
             <Link
