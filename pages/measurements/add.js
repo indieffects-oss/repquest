@@ -24,9 +24,13 @@ export default function AddMeasurement({ user, userProfile }) {
     const [saving, setSaving] = useState(false);
 
     // Check if this is a sprint-type metric
-    const isSprintMetric = selectedSuggestion?.name?.toLowerCase().includes('sprint') ||
-        selectedSuggestion?.name?.toLowerCase().includes('distance run');
-    const isRunMetric = selectedSuggestion?.name?.toLowerCase().includes('run');
+    // FIXED: Exclude "vertical" from run detection to avoid false positives on "Running Vertical Jump"
+    const isVerticalJump = selectedSuggestion?.name?.toLowerCase().includes('vertical');
+    const isSprintMetric = !isVerticalJump && (
+        selectedSuggestion?.name?.toLowerCase().includes('sprint') ||
+        selectedSuggestion?.name?.toLowerCase().includes('distance run')
+    );
+    const isRunMetric = !isVerticalJump && selectedSuggestion?.name?.toLowerCase().includes('run');
 
     useEffect(() => {
         if (!user || userProfile?.role !== 'player') {
