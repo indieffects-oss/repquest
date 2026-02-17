@@ -396,7 +396,10 @@ export default function Fundraisers({ user, userProfile }) {
 
                             {/* Prize Tiers */}
                             <div>
-                                <label className="block text-gray-300 text-sm mb-2">Supporter Rewards (optional)</label>
+                                <label className="block text-gray-300 text-sm mb-2 flex items-center gap-2">
+                                    Supporter Rewards (optional)
+                                    <InfoTooltip text="Offer optional thank you rewards to supporters based on their total pledge amount. For example: '$50 - Team Photo' or '$100 - Signed Jersey'. Donors will automatically see which rewards they qualify for based on their final total pledge. All rewards are fulfilled and managed by the coach, team parent, or designated fundraiser organizer. RepQuest tracks qualification only. Distribution and delivery are handled by the team." />
+                                </label>
                                 <div className="bg-gray-700/50 rounded-lg p-4 border border-gray-600">
                                     <div className="flex gap-2 mb-3">
                                         <input
