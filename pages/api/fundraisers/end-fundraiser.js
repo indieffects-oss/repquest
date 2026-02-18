@@ -287,32 +287,80 @@ export default async function handler(req, res) {
 }
 
 function generateCSV(fundraiser, totalLevels) {
+    // Group pledges by donor email
+    const donorMap = new Map();
+
+    for (const pledge of fundraiser.fundraiser_pledges || []) {
+        const email = pledge.donor_email;
+        if (!donorMap.has(email)) {
+            donorMap.set(email, {
+                name: pledge.donor_name,
+                email: email,
+                pledges: [],
+                totalOwed: 0
+            });
+        }
+        donorMap.get(email).pledges.push(pledge);
+        donorMap.get(email).totalOwed += (pledge.final_amount_owed || 0);
+    }
+
+    // Sort by donor name
+    const sortedDonors = Array.from(donorMap.values()).sort((a, b) =>
+        a.name.localeCompare(b.name)
+    );
+
+    // Build CSV
     let csv = '';
 
-    // Header
-    csv += 'Donor Name,Donor Email,Pledge Type,Amount Per Level,Max Amount,Flat Amount,';
+    // Header row
+    csv += 'Donor Name,Donor Email,';
     if (fundraiser.fundraiser_type === 'team') {
-        csv += 'Player Supported,Player Levels,';
+        csv += 'Players Supported,';
     }
-    csv += 'Final Amount Owed,Payment Status\n';
+    csv += 'Pledge Details,Total Amount Owed,Rewards Qualified,Payment Status\n';
 
-    // Pledges
-    for (const pledge of fundraiser.fundraiser_pledges || []) {
-        csv += `"${pledge.donor_name}",`;
-        csv += `"${pledge.donor_email}",`;
-        csv += `${pledge.pledge_type},`;
-        csv += `${pledge.amount_per_level || ''},`;
-        csv += `${pledge.max_amount || ''},`;
-        csv += `${pledge.flat_amount || ''},`;
+    // Data rows - one row per donor (combining multiple pledges)
+    for (const donor of sortedDonors) {
+        csv += `"${donor.name}",`;
+        csv += `"${donor.email}",`;
 
+        // Players supported (comma-separated if multiple)
         if (fundraiser.fundraiser_type === 'team') {
-            csv += `"${pledge.player?.display_name || 'Team General'}",`;
-            const playerProgress = fundraiser.fundraiser_progress?.find(p => p.user_id === pledge.player_id);
-            csv += `${playerProgress?.fundraiser_levels_earned || totalLevels},`;
+            const players = [...new Set(donor.pledges
+                .map(p => p.player?.display_name || 'Team General')
+            )].join(', ');
+            csv += `"${players}",`;
         }
 
-        csv += `${pledge.final_amount_owed || 0},`;
-        csv += `${pledge.payment_status}\n`;
+        // Pledge details (multiple pledges combined)
+        const pledgeDetails = donor.pledges.map(p => {
+            if (p.pledge_type === 'flat') {
+                return `$${parseFloat(p.flat_amount).toFixed(2)} flat`;
+            } else {
+                const playerProgress = fundraiser.fundraiser_progress?.find(pr => pr.user_id === p.player_id);
+                const levels = playerProgress?.fundraiser_levels_earned || totalLevels;
+                return `$${parseFloat(p.amount_per_level).toFixed(2)}/level × ${levels} levels (max $${parseFloat(p.max_amount).toFixed(2)}) = $${(p.final_amount_owed || 0).toFixed(2)}`;
+            }
+        }).join('; ');
+        csv += `"${pledgeDetails}",`;
+
+        // Total amount owed (formatted as $)
+        csv += `$${donor.totalOwed.toFixed(2)},`;
+
+        // Rewards qualified (all rewards they get)
+        if (fundraiser.prize_tiers && fundraiser.prize_tiers.length > 0) {
+            const qualifiedRewards = fundraiser.prize_tiers
+                .filter(tier => donor.totalOwed >= tier.amount)
+                .sort((a, b) => b.amount - a.amount)
+                .map(tier => `$${tier.amount}: ${tier.description}`)
+                .join('; ');
+            csv += `"${qualifiedRewards || 'None'}",`;
+        } else {
+            csv += 'N/A,';
+        }
+
+        // Payment status
+        csv += 'Pending\n';
     }
 
     return csv;

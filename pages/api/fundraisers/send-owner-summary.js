@@ -107,44 +107,6 @@ export default async function handler(req, res) {
                         </p>
                     </div>
 
-                    <div style="background-color: #fef3c7; border-left: 4px solid #f59e0b; padding: 15px; margin: 20px 0;">
-                        <h3 style="margin-top: 0; color: #92400e;">📊 Pledge Collection Sheet</h3>
-                        <p style="margin: 0; color: #78350f; margin-bottom: 10px;">
-                            A detailed CSV spreadsheet is attached to this email with all pledge information.
-                        </p>
-                        <p style="margin: 0; color: #78350f; font-size: 14px;">
-                            <strong>You can:</strong><br>
-                            • Open it in Excel or Google Sheets<br>
-                            • Add a "Paid" column to track collections<br>
-                            • Sort by donor name or amount<br>
-                            • Use it for your records
-                        </p>
-                    </div>
-
-                    <div style="background-color: #dbeafe; border-left: 4px solid #3b82f6; padding: 15px; margin: 20px 0;">
-                        <h3 style="margin-top: 0; color: #1e40af;">💰 Next Steps: Collecting Pledges</h3>
-                        <p style="margin: 0 0 10px 0; color: #1e3a8a;">
-                            All donors have been emailed their final pledge amounts. To collect:
-                        </p>
-                        <ol style="color: #1e3a8a; margin: 5px 0; padding-left: 20px;">
-                            <li>Review the attached CSV to see who owes what</li>
-                            <li>Contact donors individually to arrange payment</li>
-                            <li>Suggest options: Check, Cash, Venmo, PayPal, etc.</li>
-                            <li>Mark payments as received in your spreadsheet</li>
-                        </ol>
-                    </div>
-
-                    <div style="background-color: #f3f4f6; border-radius: 8px; padding: 15px; margin: 20px 0;">
-                        <h3 style="margin-top: 0; color: #374151;">💡 Tips for Collection</h3>
-                        <ul style="color: #4b5563; margin: 5px 0; padding-left: 20px; font-size: 14px;">
-                            <li>Send a thank you message along with collection details</li>
-                            <li>Be flexible with payment methods</li>
-                            <li>Give donors a reasonable deadline (2-3 weeks)</li>
-                            <li>Send friendly reminders if needed</li>
-                            <li>Keep the spreadsheet updated to track who's paid</li>
-                        </ul>
-                    </div>
-
                     ${rewardsSection}
 
                     ${fundraiser.fundraiser_type === 'team' ? `
@@ -168,6 +130,21 @@ export default async function handler(req, res) {
                             </table>
                         </div>
                     ` : ''}
+
+                    <div style="background-color: #dbeafe; border-left: 4px solid #3b82f6; padding: 15px; margin: 20px 0;">
+                        <h3 style="margin-top: 0; color: #1e40af;">💰 Collecting Pledges</h3>
+                        <p style="margin: 0 0 10px 0; color: #1e3a8a;">
+                            <strong>📊 Attached Spreadsheet:</strong> A detailed CSV file is attached with all pledge information. Open it in Excel or Google Sheets. 
+                            <em>Tip: In Excel, select row 1 and click View → Freeze Panes → Freeze Top Row to keep headers visible while sorting.</em>
+                        </p>
+                        <p style="margin: 10px 0; color: #1e3a8a;">
+                            <strong>📧 Donors Notified:</strong> All supporters have been emailed their final pledge amounts and instructed to contact you for payment.
+                        </p>
+                        <p style="margin: 10px 0 0 0; color: #1e3a8a;">
+                            <strong>💡 Collection Tips:</strong> Contact donors with a thank you message, be flexible with payment methods (Check, Cash, Venmo, PayPal), 
+                            give a reasonable deadline (2-3 weeks), and track payments in your spreadsheet.
+                        </p>
+                    </div>
 
                     <p style="margin-top: 30px;">Thank you for using RepQuest for your fundraiser! We hope it was a great success.</p>
                     
