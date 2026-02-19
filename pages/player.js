@@ -864,7 +864,7 @@ export default function PlayerDrill({ user, userProfile }) {
             </div>
           )}
 
-          {!countdown && !completed && !running && drill.type !== 'check' && (
+          {!countdown && !completed && !running && drill.type !== 'check' && drill.type !== 'reps' && (
             <div className="flex-1 flex flex-col items-center justify-center gap-6">
               <div className="text-center">
                 <div className="text-6xl mb-4">
